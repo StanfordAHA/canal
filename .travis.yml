@@ -37,5 +37,6 @@ script:
              -v --cov-report term-missing .
 
 
-after_success:
-    - coveralls
+# disable coveralls for now
+# after_success:
+#    - coveralls
