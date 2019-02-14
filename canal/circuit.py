@@ -1,21 +1,21 @@
 """
 This is a layer build on top of Cyclone
 """
-from common.core import Core
-from common.mux_with_default import MuxWithDefaultWrapper
-from common.zext_wrapper import ZextWrapper
-from generator.configurable import Configurable, ConfigurationType
+from gemstone.common.core import Core
+from gemstone.common.mux_with_default import MuxWithDefaultWrapper
+from gemstone.common.zext_wrapper import ZextWrapper
+from gemstone.generator.configurable import Configurable, ConfigurationType
 from .cyclone import Node, PortNode, Tile, SwitchBoxNode, SwitchBoxIO, \
     SwitchBox, InterconnectCore, RegisterNode, RegisterMuxNode
 import mantle
-from common.mux_wrapper import MuxWrapper
+from gemstone.common.mux_wrapper import MuxWrapper
 import magma
 from typing import Dict, Tuple, List
 from abc import abstractmethod
-import generator.generator as generator
-from generator.from_magma import FromMagma
+import gemstone.generator.generator as generator
+from gemstone.generator.from_magma import FromMagma
 from mantle import DefineRegister
-from common.core import CoreFeature
+from gemstone.common.core import CoreFeature
 
 
 def create_name(name: str):

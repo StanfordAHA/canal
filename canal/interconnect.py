@@ -4,10 +4,10 @@ import os
 from .cyclone import InterconnectGraph, SwitchBoxSide, Node
 from .cyclone import Tile, SwitchBoxNode, SwitchBoxIO, RegisterMuxNode
 from typing import Dict, Tuple, List
-import generator.generator as generator
+import gemstone.generator.generator as generator
 from .circuit import TileCircuit, create_name
-from generator.configurable import ConfigurationType
-from generator.const import Const
+from gemstone.generator.configurable import ConfigurationType
+from gemstone.generator.const import Const
 import enum
 
 
