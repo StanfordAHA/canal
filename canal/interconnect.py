@@ -6,7 +6,7 @@ from .cyclone import Tile, SwitchBoxNode, SwitchBoxIO, RegisterMuxNode
 from typing import Dict, Tuple, List
 import gemstone.generator.generator as generator
 from .circuit import TileCircuit, create_name
-from gemstone.generator.configurable import ConfigurationType
+from gemstone.common.configurable import ConfigurationType
 from gemstone.generator.const import Const
 import enum
 

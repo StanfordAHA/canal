@@ -4,7 +4,7 @@ This is a layer build on top of Cyclone
 from gemstone.common.core import Core
 from gemstone.common.mux_with_default import MuxWithDefaultWrapper
 from gemstone.common.zext_wrapper import ZextWrapper
-from gemstone.generator.configurable import Configurable, ConfigurationType
+from gemstone.common.configurable import Configurable, ConfigurationType
 from .cyclone import Node, PortNode, Tile, SwitchBoxNode, SwitchBoxIO, \
     SwitchBox, InterconnectCore, RegisterNode, RegisterMuxNode
 import mantle
