@@ -19,7 +19,7 @@ install:
     - pip install -r requirements.txt
     - pip install python-coveralls
     - pip install pytest-cov pytest-codestyle
-    # - pip install -e .
+    - pip install -e .
 
     - git clone https://github.com/StanfordVLSI/Genesis2.git
     - rm -rf Genesis2/Genesis2Tools/PerlLibs/ExtrasForOldPerlDistributions/Compress
