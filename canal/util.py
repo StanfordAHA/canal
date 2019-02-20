@@ -1,4 +1,4 @@
-from common.core import Core
+from gemstone.common.core import Core
 from typing import Tuple, List, Dict, Callable
 from .cyclone import SwitchBoxSide, SwitchBoxIO, InterconnectPolicy
 from .cyclone import InterconnectGraph, DisjointSwitchBox, WiltonSwitchBox

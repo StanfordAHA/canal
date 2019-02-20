@@ -1,5 +1,6 @@
-
 language: python
+python:
+    - "3.6"
 addons:
   apt:
     sources:
@@ -8,8 +9,6 @@ addons:
     - verilator
     - verilog
     - g++-4.9
-python:
-    - "3.6"
 
 install:
     # Convenience script for installing coreir on travis
@@ -17,10 +16,10 @@ install:
     - source install_coreir.sh
     
     # disable for now
-    #- pip install -r requirements.txt
+    - pip install -r requirements.txt
     - pip install python-coveralls
     - pip install pytest-cov pytest-codestyle
-    # - pip install -e .
+    - pip install -e .
 
     - git clone https://github.com/StanfordVLSI/Genesis2.git
     - rm -rf Genesis2/Genesis2Tools/PerlLibs/ExtrasForOldPerlDistributions/Compress

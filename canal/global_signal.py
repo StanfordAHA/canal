@@ -1,9 +1,9 @@
 """Useful pass on interconnect that doesn't deal with the routing network"""
 import magma
 import mantle
-from common.transform import pass_signal_through, or_reduction
-from generator.const import Const
-from generator.from_magma import FromMagma
+from gemstone.common.transform import pass_signal_through, or_reduction
+from gemstone.generator.const import Const
+from gemstone.generator.from_magma import FromMagma
 from .interconnect import Interconnect
 
 
