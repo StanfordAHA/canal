@@ -4,7 +4,7 @@ from canal.cyclone import *
 from canal.interconnect import Interconnect
 
 
-def test_smoke():
+def _test_smoke():
     width = 4
     height = 4
     config_data_width = 32
