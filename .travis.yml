@@ -33,7 +33,7 @@ script:
              --cov canal
              --ignore=filecmp.py
              --ignore=Genesis2/
-             -v --cov-report term-missing .
+             -v --cov-report term-missing -s .
 
 
 # disable coveralls for now
