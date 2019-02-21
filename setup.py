@@ -8,6 +8,6 @@ setup(
     ],
     install_requires=[
         "magma-lang",
-        "mantle",
+        "mantle>=0.1.13",
     ],
 )
