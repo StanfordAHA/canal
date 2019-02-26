@@ -25,7 +25,7 @@ script:
              --cov canal
              --ignore=filecmp.py
              --ignore=Genesis2/
-             -v --cov-report term-missing -s tests
+             -v --cov-report term-missing tests
 
 
 # disable coveralls for now
