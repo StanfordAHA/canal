@@ -22,7 +22,7 @@ class Interconnect(generator.Generator):
                  config_addr_width: int, config_data_width: int,
                  tile_id_width: int,
                  stall_signal_width: int = 4,
-                 lift_ports=True):
+                 lift_ports=False):
         super().__init__()
 
         self.config_data_width = config_data_width
@@ -80,7 +80,6 @@ class Interconnect(generator.Generator):
         for (x, y), tile in self.tile_circuits.items():
             for bit_width, switch_box in tile.sbs.items():
                 all_sbs = switch_box.switchbox.get_all_sbs()
-                # TODO: change the search logic once we add pipeline registers
                 for sb in all_sbs:
                     if sb.io != SwitchBoxIO.SB_OUT:
                         continue
@@ -127,15 +126,20 @@ class Interconnect(generator.Generator):
         # creating circuit without IO
         if lift_ports:
             self.__lift_ports()
-
-        # set tile_id
-        self.__set_tile_id()
+        else:
+            self.__ground_ports()
 
         # global ports
         self.globals = self.__add_global_ports(stall_signal_width)
 
         # add config
         self.__add_read_config_data(config_data_width)
+
+        # clean up empty tiles
+        self.__cleanup_tiles()
+
+        # set tile_id
+        self.__set_tile_id()
 
     def __get_tile_id(self, x: int, y: int):
         return x << (self.tile_id_width // 2) | y
@@ -194,6 +198,93 @@ class Interconnect(generator.Generator):
                     new_sb_name = sb_name + f"_X{sb_node.x}_Y{sb_node.y}"
                     self.add_port(new_sb_name, sb_port.base_type())
                     self.wire(self.ports[new_sb_name], sb_port)
+
+    def __connect_margin_tiles(self):
+        # connect these margin tiles
+        # margin tiles have empty switchbox
+        for coord, tile_dict in self.__tiles.items():
+            for bit_width, tile in tile_dict.items():
+                if tile.switchbox.num_track > 0 or tile.core is None:
+                    continue
+                for port_name, port_node in tile.ports.items():
+                    tile_port = self.tile_circuits[coord].ports[port_name]
+                    if len(port_node) == 0 and \
+                            len(port_node.get_conn_in()) == 0:
+                        # lift this port up
+                        x, y = coord
+                        new_port_name = f"{port_name}_X{x}_Y{y}"
+                        self.add_port(new_port_name, tile_port.base_type())
+                        self.wire(self.ports[new_port_name], tile_port)
+                    else:
+                        # connect them to the internal fabric
+                        nodes = list(port_node) + port_node.get_conn_in()[:]
+                        for sb_node in nodes:
+                            next_coord = sb_node.x, sb_node.y
+                            # depends on whether there is a pipeline register
+                            # or not, we need to be very careful
+                            if isinstance(sb_node, SwitchBoxNode):
+                                sb_name = create_name(str(sb_node))
+                            else:
+                                assert isinstance(sb_node, RegisterMuxNode)
+                                # because margin tiles won't connect to
+                                # reg mux node, they can only be connected
+                                # from
+                                nodes = sb_node.get_conn_in()[:]
+                                nodes = [x for x in nodes if
+                                         isinstance(x, SwitchBoxNode)]
+                                assert len(nodes) == 1
+                                sb_node = nodes[0]
+                                sb_name = create_name(str(sb_node))
+
+                            next_port = \
+                                self.tile_circuits[next_coord].ports[sb_name]
+                            if sb_node.io == SwitchBoxIO.SB_IN:
+                                next_port = next_port[0]
+                            else:
+                                tile_port = tile_port[0]
+
+                            self.wire(tile_port, next_port)
+
+    def __ground_ports(self):
+        # this is a pass to ground every sb ports that's not connected
+        for coord, tile_dict in self.__tiles.items():
+            for bit_width, tile in tile_dict.items():
+                ground = Const(magma.bits(0, bit_width))
+                for sb in tile.switchbox.get_all_sbs():
+                    if sb.io != SwitchBoxIO.SB_IN:
+                        continue
+                    if sb.get_conn_in():
+                        continue
+                    # no connection to that sb port, ground it
+                    sb_name = create_name(str(sb))
+                    sb_port = self.tile_circuits[coord].ports[sb_name]
+                    self.wire(ground, sb_port[0])
+
+    def __cleanup_tiles(self):
+        tiles_to_remove = set()
+        for coord, tile in self.tile_circuits.items():
+            tile_circuit = self.tile_circuits[coord]
+            if tile.core is None:
+                tiles_to_remove.add(coord)
+            else:
+                core_tile = False
+                for _, sb in tile_circuit.sbs.items():
+                    if len(sb.wires) > 0:
+                        core_tile = True
+                        break
+                if core_tile:
+                    continue
+
+            # remove all the global signals
+            for signal in self.globals:
+                if signal in tile_circuit.ports:
+                    tile_circuit.ports.pop(signal)
+        # remove empty tiles
+        for coord in tiles_to_remove:
+            # remove the tile id as well
+            tile_circuit = self.tile_circuits[coord]
+            tile_circuit.ports.pop("tile_id")
+            self.tile_circuits.pop(coord)
 
     def __add_read_config_data(self, config_data_width: int):
         self.add_port("read_config_data",
