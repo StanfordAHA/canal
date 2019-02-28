@@ -55,7 +55,7 @@ def apply_global_meso_wiring(interconnect: Interconnect, margin: int = 0):
                    interconnect.x_max + 1 - margin):
         column = interconnect.get_column(x)
         # skip the margin
-        column = column[margin:len(column) - margin]
+        column = [entry for entry in column if "config" in entry.ports]
         # wire global inputs to first tile in column
         for signal in global_ports:
             interconnect.wire(interconnect.ports[signal],
