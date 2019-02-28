@@ -122,6 +122,9 @@ class Interconnect(generator.Generator):
                         self.wire(tile.ports[src_sb_name],
                                   dst_tile.ports[dst_sb_name][idx])
 
+        # connect these margin tiles, if needed
+        self.__connect_margin_tiles()
+
         # if we need to lift the ports. this can be used for testing or
         # creating circuit without IO
         if lift_ports:
