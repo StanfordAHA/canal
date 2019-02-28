@@ -15,7 +15,7 @@ from abc import abstractmethod
 import gemstone.generator.generator as generator
 from gemstone.generator.from_magma import FromMagma
 from mantle import DefineRegister
-from gemstone.common.core import CoreFeature
+from gemstone.generator.const import Const
 
 
 def create_name(name: str):
@@ -580,6 +580,8 @@ class TileCircuit(generator.Generator):
         # most of the logic copied from tile_magma.py
         # remove all hardcoded values
         for feature in self.features():
+            if "config" not in feature.ports:
+                continue
             self.wire(self.ports.config.config_addr[self.feature_config_slice],
                       feature.ports.config.config_addr)
             self.wire(self.ports.config.config_data,
@@ -614,8 +616,12 @@ class TileCircuit(generator.Generator):
         for i, feat in enumerate(self.features()):
             # wire each feature's read_data output to
             # read_data_mux inputs
-            self.wire(feat.ports.read_config_data,
-                      self.read_data_mux.ports.I[i])
+            if "read_config_data" in feat.ports:
+                self.wire(feat.ports.read_config_data,
+                          self.read_data_mux.ports.I[i])
+            else:
+                # wire constant
+                self.wire(Const(0), self.read_data_mux.ports.I[i])
             # for each feature,
             # config_en = (config_addr.feature == feature_num) & config_en_tile
             self.decode_feat.append(
@@ -629,8 +635,9 @@ class TileCircuit(generator.Generator):
                       self.feat_and_config_en_tile[i].ports.I0)
             self.wire(self.write_and_tile.ports.O,
                       self.feat_and_config_en_tile[i].ports.I1)
-            self.wire(self.feat_and_config_en_tile[i].ports.O,
-                      feat.ports.config.write[0])
+            if "config" in feat.ports:
+                self.wire(self.feat_and_config_en_tile[i].ports.O,
+                          feat.ports.config.write[0])
             if "config_en" in feat.ports:
                 self.wire(feat.ports.config_en,
                           self.feat_and_config_en_tile[i].ports.O)
@@ -641,7 +648,8 @@ class TileCircuit(generator.Generator):
         cb_features = [self.cbs[name] for name in cb_names]
         sb_widths = list(self.sbs.keys())
         sb_widths.sort()
-        sb_features = [self.sbs[width] for width in sb_widths]
+        sb_features = [self.sbs[width] for width in sb_widths if
+                       self.sbs[width].switchbox.num_track > 0]
         if self.core is None:
             assert len(cb_features) == 0
             return []
