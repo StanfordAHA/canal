@@ -37,7 +37,7 @@ class GlobalSignalWiring(enum.Enum):
 @pytest.mark.parametrize("reg_mode", [True, False])
 @pytest.mark.parametrize("wiring", [GlobalSignalWiring.Fanout,
                                     GlobalSignalWiring.Meso])
-def _test_interconnect(num_tracks: int, chip_size: int,
+def test_interconnect(num_tracks: int, chip_size: int,
                       reg_mode: bool,
                       wiring: GlobalSignalWiring):
     addr_width = 8
