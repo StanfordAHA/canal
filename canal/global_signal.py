@@ -7,15 +7,18 @@ from gemstone.generator.from_magma import FromMagma
 from .interconnect import Interconnect
 
 
-def apply_global_fanout_wiring(interconnect: Interconnect):
+def apply_global_fanout_wiring(interconnect: Interconnect, margin: int = 0):
     # straight-forward fanout for global signals
     global_ports = interconnect.globals
+    cgra_width = interconnect.x_max - interconnect.x_min + 1 - 2 * margin
     interconnect_read_data_or = \
-        FromMagma(mantle.DefineOr(interconnect.x_max - interconnect.x_min + 1,
-                                  interconnect.config_data_width))
+        FromMagma(mantle.DefineOr(cgra_width, interconnect.config_data_width))
     # this is connected on a per-column bases
-    for x in range(interconnect.x_min, interconnect.x_max + 1):
+    for x in range(interconnect.x_min + margin,
+                   interconnect.x_max + 1 - margin):
         column = interconnect.get_column(x)
+        # skip the margin
+        column = column[margin:len(column) - margin]
         # handle the read config
         column_read_data_or = \
             FromMagma(mantle.DefineOr(len(column),
@@ -29,7 +32,7 @@ def apply_global_fanout_wiring(interconnect: Interconnect):
                               tile.ports.read_config_data)
 
         # wire it to the interconnect_read_data_or
-        idx = x - interconnect.x_min
+        idx = x - (interconnect.x_min + margin)
         interconnect.wire(interconnect_read_data_or.ports[f"I{idx}"],
                           column_read_data_or.ports.O)
 
@@ -40,16 +43,19 @@ def apply_global_fanout_wiring(interconnect: Interconnect):
     return interconnect_read_data_or
 
 
-def apply_global_meso_wiring(interconnect: Interconnect):
+def apply_global_meso_wiring(interconnect: Interconnect, margin: int = 0):
     # "river routing" for global signal
     global_ports = interconnect.globals
+    cgra_width = interconnect.x_max - interconnect.x_min + 1 - 2 * margin
     interconnect_read_data_or = \
-        FromMagma(mantle.DefineOr(interconnect.x_max - interconnect.x_min + 1,
-                                  interconnect.config_data_width))
+        FromMagma(mantle.DefineOr(cgra_width, interconnect.config_data_width))
 
     # looping through on a per-column bases
-    for x in range(interconnect.x_min, interconnect.x_max + 1):
+    for x in range(interconnect.x_min + margin,
+                   interconnect.x_max + 1 - margin):
         column = interconnect.get_column(x)
+        # skip the margin
+        column = [entry for entry in column if "config" in entry.ports]
         # wire global inputs to first tile in column
         for signal in global_ports:
             interconnect.wire(interconnect.ports[signal],
@@ -92,7 +98,7 @@ def apply_global_meso_wiring(interconnect: Interconnect):
             interconnect.wire(tile.ports.read_config_data,
                               ports_in[i + 1])
         # Connect the last tile's read_data output to the global OR
-        idx = x - interconnect.x_min
+        idx = x - (interconnect.x_min + margin)
         interconnect.wire(interconnect_read_data_or.ports[f"I{idx}"],
                           column[-1].ports.read_config_data)
 
