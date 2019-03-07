@@ -234,6 +234,9 @@ def test_tile(num_tracks: int):
     tile_circuit = TileCircuit(tiles, addr_width, data_width,
                                tile_id_width=tile_id_width)
 
+    # finalize it
+    tile_circuit.finalize()
+
     circuit = tile_circuit.circuit()
 
     # set up the configuration and test data

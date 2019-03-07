@@ -13,6 +13,7 @@ def test_empty_tile():
     tile = Tile(0, 0, bit_width, SwitchBox(0, 0, 0, bit_width, []))
     tile.set_core(core)
     tile_circuit = TileCircuit({bit_width: tile}, 8, 32)
+    tile_circuit.finalize()
     circuit = tile_circuit.circuit()
     with tempfile.TemporaryDirectory() as tempdir:
         filename = os.path.join(tempdir, "tile")
@@ -31,6 +32,7 @@ def test_empty_switch_box():
     sb_node.add_edge(tile.ports["data_in_1b"])
 
     tile_circuit = TileCircuit({bit_width: tile}, 8, 32)
+    tile_circuit.finalize()
     # also need to ground the 16 bit
     tile_circuit.wire(Const(0), tile_circuit.core.ports["data_in_16b"])
     circuit = tile_circuit.circuit()
@@ -79,6 +81,7 @@ def test_empty_tile_util():
                                          margin=margin)
         ics[bit_width] = ic
     interconnect = Interconnect(ics, addr_width, data_width, tile_id_width)
+    interconnect.finalize()
     # wiring
     apply_global_meso_wiring(interconnect, margin=margin)
 
