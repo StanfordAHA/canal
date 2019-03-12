@@ -531,6 +531,8 @@ class TileCircuit(generator.Generator):
         # placeholder for global signal wiring
         self.read_data_mux: MuxWithDefaultWrapper = None
 
+        self.finalized = False
+
     def __add_tile_id(self):
         self.add_port("tile_id",
                       magma.In(magma.Bits(self.tile_id_width)))
@@ -579,6 +581,9 @@ class TileCircuit(generator.Generator):
         return False
 
     def finalize(self):
+        if self.finalized:
+            return
+        self.finalized = True
         # add stall and reset signal
         self.__add_stall()
         self.__add_reset()

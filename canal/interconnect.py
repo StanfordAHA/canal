@@ -144,6 +144,8 @@ class Interconnect(generator.Generator):
         # set tile_id
         self.__set_tile_id()
 
+        self.finalized = False
+
     def __get_tile_id(self, x: int, y: int):
         return x << (self.tile_id_width // 2) | y
 
@@ -307,6 +309,9 @@ class Interconnect(generator.Generator):
                 self.ports.stall.qualified_name())
 
     def finalize(self):
+        if self.finalized:
+            return
+        self.finalized = True
         # finalize the design. after this, users are not able to add
         # features to the tiles any more
         # clean up first
