@@ -635,6 +635,8 @@ class TileCircuit(generator.Generator):
             circuit = self.sbs[src_node.width]
         elif isinstance(dst_node, PortNode):
             circuit = self.cbs[dst_node.name]
+        elif isinstance(dst_node, RegisterMuxNode):
+            circuit = self.sbs[src_node.width]
         else:
             raise NotImplementedError(type(dst_node))
         reg_index = self.__find_reg_index(circuit, dst_node)

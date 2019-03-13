@@ -336,7 +336,7 @@ class Interconnect(generator.Generator):
                 for i in range(len(segment) - 1):
                     pre_node = segment[i]
                     next_node = segment[i + 1]
-                    assert pre_node in next_node
+                    assert next_node in pre_node
                     if pre_node.x != next_node.x or pre_node.y != next_node.y:
                         # inter tile connection. skipping for now
                         continue
