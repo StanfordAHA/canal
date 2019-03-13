@@ -144,6 +144,8 @@ class Interconnect(generator.Generator):
         # set tile_id
         self.__set_tile_id()
 
+        self.finalized = False
+
     def __get_tile_id(self, x: int, y: int):
         return x << (self.tile_id_width // 2) | y
 
@@ -305,6 +307,18 @@ class Interconnect(generator.Generator):
                 self.ports.clk.qualified_name(),
                 self.ports.reset.qualified_name(),
                 self.ports.stall.qualified_name())
+
+    def finalize(self):
+        if self.finalized:
+            raise Exception("Circuit already finalized")
+        self.finalized = True
+        # finalize the design. after this, users are not able to add
+        # features to the tiles any more
+        # clean up first
+        self.__cleanup_tiles()
+        # finalize individual tiles first
+        for _, tile in self.tile_circuits.items():
+            tile.finalize()
 
     def get_route_bitstream_config(self, src_node: Node, dst_node: Node):
         # this is the complete one which includes the tile_id
