@@ -152,8 +152,8 @@ def test_interconnect(num_tracks: int, chip_size: int,
                             dst_node = next_node
 
                         entry = \
-                            interconnect.get_route_bitstream_config(pre_node,
-                                                                    next_node)
+                            interconnect.get_node_bitstream_config(pre_node,
+                                                                   next_node)
 
                         config_entry.append(entry)
                     assert src_node is not None and dst_node is not None
@@ -187,8 +187,8 @@ def test_interconnect(num_tracks: int, chip_size: int,
                             dst_node = next_node
 
                         entry = \
-                            interconnect.get_route_bitstream_config(pre_node,
-                                                                    next_node)
+                            interconnect.get_node_bitstream_config(pre_node,
+                                                                   next_node)
 
                         config_entry.append(entry)
                     assert src_node is not None and dst_node is not None
@@ -255,6 +255,11 @@ def test_dump_pnr():
         in_conn.append((side, SwitchBoxIO.SB_IN))
         out_conn.append((side, SwitchBoxIO.SB_OUT))
 
+    pipeline_regs = []
+    for track in range(num_tracks):
+        for side in SwitchBoxSide:
+            pipeline_regs.append((track, side))
+
     ics = {}
     for bit_width in bit_widths:
         ic = create_uniform_interconnect(chip_size, chip_size, bit_width,
@@ -262,7 +267,8 @@ def test_dump_pnr():
                                          {f"data_in_{bit_width}b": in_conn,
                                           f"data_out_{bit_width}b": out_conn},
                                          {track_length: num_tracks},
-                                         SwitchBoxType.Disjoint)
+                                         SwitchBoxType.Disjoint,
+                                         pipeline_reg=pipeline_regs)
         ics[bit_width] = ic
 
     interconnect = Interconnect(ics, addr_width, data_width, tile_id_width,
@@ -275,3 +281,4 @@ def test_dump_pnr():
         assert os.path.isfile(os.path.join(tempdir, f"{design_name}.info"))
         assert os.path.isfile(os.path.join(tempdir, "1.graph"))
         assert os.path.isfile(os.path.join(tempdir, "16.graph"))
+        assert os.path.isfile(os.path.join(tempdir, f"{design_name}.layout"))

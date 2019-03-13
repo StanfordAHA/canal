@@ -320,7 +320,7 @@ class Interconnect(generator.Generator):
         for _, tile in self.tile_circuits.items():
             tile.finalize()
 
-    def get_route_bitstream_config(self, src_node: Node, dst_node: Node):
+    def get_node_bitstream_config(self, src_node: Node, dst_node: Node):
         # this is the complete one which includes the tile_id
         x, y = dst_node.x, dst_node.y
         tile = self.tile_circuits[(x, y)]
@@ -329,22 +329,139 @@ class Interconnect(generator.Generator):
         addr = addr | tile_id
         return addr, data
 
+    def get_route_bitstream(self, routes: Dict[str, List[List[Node]]]):
+        result = []
+        for _, route in routes.items():
+            for segment in route:
+                for i in range(len(segment) - 1):
+                    pre_node = segment[i]
+                    next_node = segment[i + 1]
+                    assert pre_node in next_node
+                    if pre_node.x != next_node.x or pre_node.y != next_node.y:
+                        # inter tile connection. skipping for now
+                        continue
+                    if len(next_node.get_conn_in()) == 1:
+                        # no mux created. skip
+                        continue
+                    addr, data = self.get_node_bitstream_config(pre_node,
+                                                                next_node)
+                    result.append((addr, data))
+        return result
+
+    def __find_cores(self):
+        result = set()
+        for coord in self.tile_circuits:
+            tile = self.tile_circuits[coord]
+            core_name = tile.core.name()
+            result.add(core_name)
+        return result
+
+    @staticmethod
+    def __get_core_tag(core_names, default_priority):
+        # TODO: refactor this to garnet/gemstone
+        name_to_tag = {}
+        tag_to_name = {}
+        tag_to_priority = {}
+        for core_name in core_names:
+            if core_name == "PECore":
+                tag = "p"
+                priority = default_priority
+            elif core_name == "MemCore":
+                tag = "m"
+                priority = default_priority - 1
+            elif core_name == "io1bit":
+                tag = "i"
+                priority = 1
+            elif core_name == "io16bit":
+                tag = "I"
+                priority = 2
+            else:
+                # use the core_name
+                tag = core_name[0]
+                priority = default_priority
+            name_to_tag[core_name] = tag
+            assert tag not in tag_to_name, f"{tag} already exists"
+            tag_to_name[tag] = core_name
+            tag_to_priority[tag] = priority
+        return name_to_tag, tag_to_name, tag_to_priority
+
+    def __get_registered_tile(self):
+        result = set()
+        for coord, tile_circuit in self.tile_circuits.items():
+            for _, tile in tile_circuit.tiles.items():
+                switchbox = tile.switchbox
+                if len(switchbox.registers) > 0:
+                    result.add(coord)
+                    break
+        return result
+
     def dump_pnr(self, dir_name, design_name):
-        # TODO: add layout dump as well
         if not os.path.isdir(dir_name):
             os.mkdir(dir_name)
+        dir_name = os.path.abspath(dir_name)
         graph_path_dict = {}
         for bit_width, graph in self.__graphs.items():
             graph_path = os.path.join(dir_name, f"{bit_width}.graph")
             graph_path_dict[bit_width] = graph_path
             graph.dump_graph(graph_path)
 
+        # generate the layout file
+        layout_file = os.path.join(dir_name, f"{design_name}.layout")
+        self.__dump_layout_file(layout_file)
         pnr_file = os.path.join(dir_name, f"{design_name}.info")
         with open(pnr_file, "w+") as f:
+            f.write(f"layout={layout_file}\n")
             graph_configs = [f"{bit_width} {graph_path_dict[bit_width]}" for
                              bit_width in self.__graphs]
             graph_config_str = " ".join(graph_configs)
             f.write(f"graph={graph_config_str}\n")
+
+    def __dump_layout_file(self, layout_file):
+        # empty tiles first first
+        with open(layout_file, "w+") as f:
+            f.write("LAYOUT   0 20\nBEGIN\n")
+            for y in range(self.y_max + 1):
+                for x in range(self.x_max + 1):
+                    coord = (x, y)
+                    if coord not in self.tile_circuits:
+                        f.write("1")
+                    else:
+                        f.write("0")
+                f.write("\n")
+            f.write("END\n")
+            # looping through the tiles to figure what core it has
+            # use default priority 20
+            default_priority = 20
+            core_names = self.__find_cores()
+            name_to_tag, tag_to_name, tag_to_priority \
+                = self.__get_core_tag(core_names, default_priority)
+            for core_name, tag in name_to_tag.items():
+                priority = tag_to_priority[tag]
+                f.write(f"LAYOUT {tag} {priority} {default_priority}\n")
+                f.write("BEGIN\n")
+                for y in range(self.y_max + 1):
+                    for x in range(self.x_max + 1):
+                        coord = (x, y)
+                        if coord not in self.tile_circuits or \
+                                self.tile_circuits[
+                                    coord].core.name() != core_name:
+                            f.write("0")
+                        else:
+                            f.write("1")
+                    f.write("\n")
+                f.write("END\n")
+            # handle registers
+            assert "r" not in tag_to_name
+            r_locs = self.__get_registered_tile()
+            f.write(f"LAYOUT r {default_priority} 0\nBEGIN\n")
+            for y in range(self.y_max + 1):
+                for x in range(self.x_max + 1):
+                    if (x, y) in r_locs:
+                        f.write("1")
+                    else:
+                        f.write("0")
+                f.write("\n")
+            f.write("END\n")
 
     def get_column(self, x: int):
         # obtain a list of columns sorted by y
