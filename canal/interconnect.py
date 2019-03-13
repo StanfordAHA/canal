@@ -310,7 +310,7 @@ class Interconnect(generator.Generator):
 
     def finalize(self):
         if self.finalized:
-            return
+            raise Exception("Circuit already finalized")
         self.finalized = True
         # finalize the design. after this, users are not able to add
         # features to the tiles any more

@@ -582,7 +582,7 @@ class TileCircuit(generator.Generator):
 
     def finalize(self):
         if self.finalized:
-            return
+            raise Exception("Circuit already finalized")
         self.finalized = True
         # add stall and reset signal
         self.__add_stall()
