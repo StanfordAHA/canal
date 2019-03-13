@@ -57,7 +57,7 @@ def load_routing_result(filename, interconnect: Interconnect):
             graph = interconnect.get_graph(bit_width)
             return graph.get_tile(x, y).switchbox.registers[reg_name]
         elif node_str_[0] == "RMUX":
-            rmux_name, track, x, y, bit_width = node_str[1:]
+            rmux_name, x, y, bit_width = node_str[1:]
             graph = interconnect.get_graph(bit_width)
             return graph.get_tile(x, y).switchbox.reg_muxs[rmux_name]
         else:
