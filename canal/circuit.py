@@ -538,6 +538,7 @@ class TileCircuit(generator.Generator):
             config=magma.In(ConfigurationType(self.full_config_addr_width,
                                               self.config_data_width)),
             clk=magma.In(magma.Clock),
+            read_config_data=magma.Out(magma.Bits(self.config_data_width))
         )
 
         features = self.features()
