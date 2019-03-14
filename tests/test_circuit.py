@@ -304,7 +304,7 @@ def test_tile(num_tracks: int):
 
     # process the raw config data and change it into the actual config addr
     for addr, config_value in raw_config_data:
-        addr = BitVector(addr, data_width) | tile_id
+        addr = BitVector(addr, data_width) | BitVector[data_width](tile_id)
         config_data.append((addr, config_value))
 
     assert len(config_data) / 2 == len(test_data)
