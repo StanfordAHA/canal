@@ -83,6 +83,7 @@ class CB(InterconnectConfigurable):
             # to be a pass through wire anyway
             self.ports.pop("clk")
             self.ports.pop("reset")
+            self.ports.pop("read_config_data")
 
         self._setup_config()
 
