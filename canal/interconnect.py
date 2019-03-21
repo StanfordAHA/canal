@@ -293,7 +293,7 @@ class Interconnect(generator.Generator):
 
     def __add_read_config_data(self, config_data_width: int):
         self.add_port("read_config_data",
-                      magma.Out(magma.Bits(config_data_width)))
+                      magma.Out(magma.Bits[config_data_width]))
 
     def __add_global_ports(self, stall_signal_width: int):
         self.add_ports(
@@ -301,7 +301,7 @@ class Interconnect(generator.Generator):
                                               self.config_data_width)),
             clk=magma.In(magma.Clock),
             reset=magma.In(magma.AsyncReset),
-            stall=magma.In(magma.Bits(stall_signal_width)))
+            stall=magma.In(magma.Bits[stall_signal_width]))
 
         return (self.ports.config.qualified_name(),
                 self.ports.clk.qualified_name(),

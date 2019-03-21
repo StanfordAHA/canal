@@ -433,7 +433,7 @@ class TileCircuit(generator.Generator):
                         # we have to be very creative here
                         if port_name not in sb_circuit.ports:
                             sb_circuit.add_port(port_name,
-                                                magma.In(magma.Bits(bit_width)))
+                                                magma.In(magma.Bits[bit_width]))
                             self.wire(self.core.ports[port_name],
                                       sb_circuit.ports[port_name])
                         sb_circuit.wire(sb_circuit.ports[port_name],
@@ -441,7 +441,7 @@ class TileCircuit(generator.Generator):
 
         self.__add_tile_id()
         # add ports
-        self.add_ports(stall=magma.In(magma.Bits(stall_signal_width)),
+        self.add_ports(stall=magma.In(magma.Bits[stall_signal_width]),
                        reset=magma.In(magma.AsyncReset))
 
         # lift ports if there is empty sb
@@ -478,7 +478,7 @@ class TileCircuit(generator.Generator):
 
     def __add_tile_id(self):
         self.add_port("tile_id",
-                      magma.In(magma.Bits(self.tile_id_width)))
+                      magma.In(magma.Bits[self.tile_id_width]))
 
     def __add_stall(self):
         # automatically add stall signal and connect it to the features if the
@@ -539,7 +539,7 @@ class TileCircuit(generator.Generator):
             config=magma.In(ConfigurationType(self.full_config_addr_width,
                                               self.config_data_width)),
             clk=magma.In(magma.Clock),
-            read_config_data=magma.Out(magma.Bits(self.config_data_width))
+            read_config_data=magma.Out(magma.Bits[self.config_data_width])
         )
 
         features = self.features()
@@ -665,7 +665,7 @@ class TileCircuit(generator.Generator):
                     self.add_port(port_name, cb_input_port.base_type())
                     self.wire(self.ports[port_name], cb_input_port)
                 else:
-                    self.add_port(port_name, magma.In(magma.Bits(bit_width)))
+                    self.add_port(port_name, magma.In(magma.Bits[bit_width]))
                     self.wire(self.ports[port_name], self.core.ports[port_name])
             # lift the output ports up
             for bt, port_name in self.core_interface.outputs():
@@ -674,7 +674,7 @@ class TileCircuit(generator.Generator):
                 # depends on if the port has any connection or not
                 # we lift the port up first
                 # if it has connection, then we connect it to the core
-                self.add_port(port_name, magma.Out(magma.Bits(bit_width)))
+                self.add_port(port_name, magma.Out(magma.Bits[bit_width]))
                 self.wire(self.ports[port_name], self.core.ports[port_name])
 
     @staticmethod
