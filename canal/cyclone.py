@@ -201,7 +201,7 @@ class RegisterMuxNode(Node):
         self.track = track
         self.side = side
 
-        self.name = f"{self.side}_{self.track}"
+        self.name = f"{int(self.side.value)}_{self.track}"
 
     def node_str(self):
         return f"RMUX ({self.track}, {self.x}, {self.y}, " +\
