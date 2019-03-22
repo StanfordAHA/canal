@@ -25,6 +25,8 @@ class Interconnect(generator.Generator):
                  lift_ports=False):
         super().__init__()
 
+        self.__interface = set()
+
         self.config_data_width = config_data_width
         self.config_addr_width = config_addr_width
         self.tile_id_width = tile_id_width
@@ -146,6 +148,9 @@ class Interconnect(generator.Generator):
 
         self.finalized = False
 
+    def interface(self):
+        return self.__interface
+
     def __get_tile_id(self, x: int, y: int):
         return x << (self.tile_id_width // 2) | y
 
@@ -202,6 +207,7 @@ class Interconnect(generator.Generator):
                     # we need to add x and y to the sb_name to avoid conflict
                     new_sb_name = sb_name + f"_X{sb_node.x}_Y{sb_node.y}"
                     self.add_port(new_sb_name, sb_port.base_type())
+                    self.__interface.add(new_sb_name)
                     self.wire(self.ports[new_sb_name], sb_port)
 
     def __connect_margin_tiles(self):
@@ -219,6 +225,7 @@ class Interconnect(generator.Generator):
                         x, y = coord
                         new_port_name = f"{port_name}_X{x}_Y{y}"
                         self.add_port(new_port_name, tile_port.base_type())
+                        self.__interface.add(new_port_name)
                         self.wire(self.ports[new_port_name], tile_port)
                     else:
                         # connect them to the internal fabric
