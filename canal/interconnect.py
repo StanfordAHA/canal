@@ -357,6 +357,22 @@ class Interconnect(generator.Generator):
                     result.append((addr, data))
         return result
 
+    def configure_placement(self, x: int, y: int, instr):
+        tile_id = self.__get_tile_id(x, y)
+        tile = self.tile_circuits[(x, y)]
+        core = tile.core
+        result = core.configure(instr)
+        # TODO(rsetaluri): Cache this information. Also, this should be
+        # refactored and abstracted.
+        feature_addr = tile.features().index(core)
+        for i in range(len(result)):
+            reg_index, data = result[i]
+            addr = (reg_index << tile.feature_config_slice.start) | \
+                   (feature_addr << tile.tile_id_width)
+            addr = addr | tile_id
+            result[i] = (addr, data)
+        return result
+
     def __find_cores(self):
         result = set()
         for coord in self.tile_circuits:
