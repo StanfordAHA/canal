@@ -192,6 +192,7 @@ class SwitchBoxNode(Node):
         return super().__hash__() ^ hash(self.track) ^ hash(self.side) ^ \
             hash(self.io)
 
+
 class RegisterMuxNode(Node):
     def __init__(self, x: int, y: int, track: int, width: int,
                  side: SwitchBoxSide):

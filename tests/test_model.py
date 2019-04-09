@@ -57,25 +57,5 @@ def test_clone(num_tracks: int, chip_size: int,
 
     interconnect = Interconnect(ics, addr_width, data_width, tile_id_width,
                                 lift_ports=True)
-    model = InterconnectModelCompiler(interconnect)
-    new_interconnect = model.clone_graph()
-
-    # they should match with everything
-
-    with tempfile.TemporaryDirectory() as tempdir_old:
-        interconnect.dump_pnr(tempdir_old, "old")
-        with tempfile.TemporaryDirectory() as tempdir_new:
-            new_interconnect.dump_pnr(tempdir_new, "new")
-
-            # they should be exactly the same
-            graph1_old = os.path.join(tempdir_old, "1.graph")
-            graph1_new = os.path.join(tempdir_new, "1.graph")
-            assert filecmp.cmp(graph1_old, graph1_new)
-
-            graph16_old = os.path.join(tempdir_old, "16.graph")
-            graph16_new = os.path.join(tempdir_new, "16.graph")
-            assert filecmp.cmp(graph16_old, graph16_new)
-
-            layout_old = os.path.join(tempdir_old, "old.layout")
-            layout_new = os.path.join(tempdir_new, "new.layout")
-            assert filecmp.cmp(layout_old, layout_new)
+    compiler = InterconnectModelCompiler(interconnect)
+    model = compiler.compile()
