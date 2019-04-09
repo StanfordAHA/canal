@@ -1,6 +1,6 @@
 from canal.interconnect import Interconnect
 from canal.circuit import CB, SB, Node, RegisterNode
-from typing import Dict, List, Set
+from typing import Dict, Set
 
 
 class InterconnectModel:
@@ -27,7 +27,26 @@ class InterconnectModel:
                         self._reg_values[to] = 0
 
     def eval(self):
-        pass
+        # recursive evaluation
+        def eval_node(node_):
+            if isinstance(node_, RegisterNode):
+                value = self._reg_values[node_]
+            else:
+                value = self._values[node_]
+            if node_ in self._connected_pairs:
+                nodes_ = self._connected_pairs[node_]
+                for next_node in nodes_:
+                    # set the next value
+                    self._values[next_node] = value
+                    # recursive call
+                    eval_node(next_node)
+
+        for _, node in self.interface:
+            eval_node(node)
+
+        # propagate the register value
+        for node in self._reg_values:
+            self._reg_values[node] = self._values[node]
 
     def set_value(self, node_name: str, value: int):
         assert node_name in self.interface
@@ -54,6 +73,7 @@ class InterconnectModelCompiler:
         return InterconnectModel(connected_pair, interface)
 
     def decode_bitstream_feature(self, addr):
+        # FIXME: need to refactor this decode
         tile_id = addr & (0xFFFFFFFF >> (32 - self.interconnect.tile_id_width))
         x = tile_id >> (self.interconnect.tile_id_width / 2)
         y = tile_id & (0xFFFFFFFF >> (32 - self.interconnect.tile_id_width / 2))

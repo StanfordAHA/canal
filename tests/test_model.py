@@ -2,9 +2,7 @@ from canal.model import *
 from gemstone.common.dummy_core_magma import DummyCore
 from canal.util import *
 import pytest
-import tempfile
-import filecmp
-import os
+import random
 
 
 @pytest.mark.parametrize("num_tracks", [2, 4])
@@ -57,5 +55,27 @@ def test_clone(num_tracks: int, chip_size: int,
 
     interconnect = Interconnect(ics, addr_width, data_width, tile_id_width,
                                 lift_ports=True)
+
+    # random path
+    # no loop
+    rnd = random.Random(0)
+    interface = interconnect.interface()
+
+    def construct_path():
+        start_nodes = [interface[name] for name in interface if
+                       len(interface[name]) > 0]
+        end_nodes = [interface[name] for name in interface if
+                     len(interface[name]) == 0]
+        start_node = rnd.choice(start_nodes)
+        end_node = rnd.choice(end_nodes)
+        link = {}
+
+        def construct_path(node):
+            if node == end_node:
+                return
+            else:
+                for node_ in node:
+                    link[node_] = node
+
     compiler = InterconnectModelCompiler(interconnect)
     model = compiler.compile()
