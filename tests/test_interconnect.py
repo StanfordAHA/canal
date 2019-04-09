@@ -9,6 +9,7 @@ from canal.global_signal import apply_global_fanout_wiring, \
     apply_global_meso_wiring
 import pytest
 import enum
+import filecmp
 
 
 def assert_tile_coordinate(tile: Tile, x: int, y: int):
@@ -210,8 +211,8 @@ def test_interconnect(num_tracks: int, chip_size: int,
         tester.reset()
         input_port, output_port, value = test_data[i]
         for addr, index in config_data[i]:
-            tester.configure(BitVector(addr, data_width), index)
-            tester.configure(BitVector(addr, data_width), index + 1, False)
+            tester.configure(BitVector[data_width](addr), index)
+            tester.configure(BitVector[data_width](addr), index + 1, False)
             tester.config_read(addr)
             tester.eval()
             tester.expect(circuit.read_config_data, index)
@@ -225,6 +226,26 @@ def test_interconnect(num_tracks: int, chip_size: int,
                                magma_output="coreir-verilog",
                                directory=tempdir,
                                flags=["-Wno-fatal"])
+
+    # also test the interconnect clone
+    new_interconnect = interconnect.clone()
+    with tempfile.TemporaryDirectory() as tempdir_old:
+        interconnect.dump_pnr(tempdir_old, "old")
+        with tempfile.TemporaryDirectory() as tempdir_new:
+            new_interconnect.dump_pnr(tempdir_new, "new")
+
+            # they should be exactly the same
+            graph1_old = os.path.join(tempdir_old, "1.graph")
+            graph1_new = os.path.join(tempdir_new, "1.graph")
+            assert filecmp.cmp(graph1_old, graph1_new)
+
+            graph16_old = os.path.join(tempdir_old, "16.graph")
+            graph16_new = os.path.join(tempdir_new, "16.graph")
+            assert filecmp.cmp(graph16_old, graph16_new)
+
+            layout_old = os.path.join(tempdir_old, "old.layout")
+            layout_new = os.path.join(tempdir_new, "new.layout")
+            assert filecmp.cmp(layout_old, layout_new)
 
 
 def test_dump_pnr():

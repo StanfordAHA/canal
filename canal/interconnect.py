@@ -471,6 +471,19 @@ class Interconnect(generator.Generator):
                 f.write("\n")
             f.write("END\n")
 
+    def clone(self):
+        bit_widths = self.get_bit_widths()
+        result_graph = {}
+        for bit_width in bit_widths:
+            graph = self.get_graph(bit_width)
+            new_graph = graph.clone()
+            result_graph[bit_width] = new_graph
+        ic = Interconnect(result_graph, self.config_addr_width,
+                          self.config_data_width,
+                          self.tile_id_width,
+                          self.stall_signal_width)
+        return ic
+
     def get_column(self, x: int):
         # obtain a list of columns sorted by y
         result = []

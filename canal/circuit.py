@@ -103,6 +103,8 @@ class SB(InterconnectConfigurable):
         self.reg_muxs: Dict[str, Tuple[RegisterMuxNode, MuxWrapper]] = {}
         self.regs: Dict[str, Tuple[RegisterNode, FromMagma]] = {}
 
+        self.mux_name_to_node: Dict[str:, Node] = {}
+
         # first pass to create the mux and register circuit
         self.__create_reg()
         self.__create_sb_mux()
@@ -156,7 +158,7 @@ class SB(InterconnectConfigurable):
             config_name = get_mux_sel_name(sb)
             if mux.height > 1:
                 assert mux.sel_bits > 0
-                self.add_config(config_name, mux.sel_bits)
+                self.add_config_node(sb, config_name, mux.sel_bits)
                 self.wire(self.registers[config_name].ports.O,
                           mux.ports.S)
 
@@ -164,13 +166,19 @@ class SB(InterconnectConfigurable):
             config_name = get_mux_sel_name(reg_mux)
             assert mux.height == 2
             assert mux.sel_bits > 0
-            self.add_config(config_name, mux.sel_bits)
+            self.add_config_node(reg_mux, config_name, mux.sel_bits)
             self.wire(self.registers[config_name].ports.O,
                       mux.ports.S)
         self._setup_config()
 
         # name
         self.instance_name = self.name()
+
+    def add_config_node(self, node: Node, name, width):
+        super().add_config(name, width)
+        # index the name to node so that we can trace back during the
+        # configuration
+        self.mux_name_to_node[name] = node
 
     def __create_sb_mux(self):
         sbs = self.switchbox.get_all_sbs()
