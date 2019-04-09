@@ -25,7 +25,7 @@ class Interconnect(generator.Generator):
                  lift_ports=False):
         super().__init__()
 
-        self.__interface = set()
+        self.__interface = {}
 
         self.config_data_width = config_data_width
         self.config_addr_width = config_addr_width
@@ -208,7 +208,7 @@ class Interconnect(generator.Generator):
                     # we need to add x and y to the sb_name to avoid conflict
                     new_sb_name = sb_name + f"_X{sb_node.x}_Y{sb_node.y}"
                     self.add_port(new_sb_name, sb_port.base_type())
-                    self.__interface.add(new_sb_name)
+                    self.__interface[new_sb_name] = sb_node
                     self.wire(self.ports[new_sb_name], sb_port)
 
     def __connect_margin_tiles(self):
@@ -226,7 +226,7 @@ class Interconnect(generator.Generator):
                         x, y = coord
                         new_port_name = f"{port_name}_X{x}_Y{y}"
                         self.add_port(new_port_name, tile_port.base_type())
-                        self.__interface.add(new_port_name)
+                        self.__interface[new_port_name] = port_node
                         self.wire(self.ports[new_port_name], tile_port)
                     else:
                         # connect them to the internal fabric
@@ -470,6 +470,27 @@ class Interconnect(generator.Generator):
                         f.write("0")
                 f.write("\n")
             f.write("END\n")
+
+    def parse_node(self, node_str):
+        if node_str[0] == "SB":
+            track, x, y, side, io_, bit_width = node_str[1:]
+            graph = self.get_graph(bit_width)
+            return graph.get_sb(x, y, SwitchBoxSide(side), track,
+                                SwitchBoxIO(io_))
+        elif node_str[0] == "PORT":
+            port_name, x, y, bit_width = node_str[1:]
+            graph = self.get_graph(bit_width)
+            return graph.get_port(x, y, port_name)
+        elif node_str[0] == "REG":
+            reg_name, track, x, y, bit_width = node_str[1:]
+            graph = self.get_graph(bit_width)
+            return graph.get_tile(x, y).switchbox.registers[reg_name]
+        elif node_str[0] == "RMUX":
+            rmux_name, x, y, bit_width = node_str[1:]
+            graph = self.get_graph(bit_width)
+            return graph.get_tile(x, y).switchbox.reg_muxs[rmux_name]
+        else:
+            raise Exception("Unknown node " + " ".join(node_str))
 
     def clone(self):
         bit_widths = self.get_bit_widths()

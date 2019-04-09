@@ -42,33 +42,12 @@ def load_routing_result(filename, interconnect: Interconnect):
     raw_routing_result = __parse_raw_routing_result(filename)
     result = {}
 
-    def __parse_node(node_str_):
-        if node_str_[0] == "SB":
-            track, x, y, side, io_, bit_width = node_str_[1:]
-            graph = interconnect.get_graph(bit_width)
-            return graph.get_sb(x, y, SwitchBoxSide(side), track,
-                                SwitchBoxIO(io_))
-        elif node_str_[0] == "PORT":
-            port_name, x, y, bit_width = node_str_[1:]
-            graph = interconnect.get_graph(bit_width)
-            return graph.get_port(x, y, port_name)
-        elif node_str_[0] == "REG":
-            reg_name, track, x, y, bit_width = node_str[1:]
-            graph = interconnect.get_graph(bit_width)
-            return graph.get_tile(x, y).switchbox.registers[reg_name]
-        elif node_str_[0] == "RMUX":
-            rmux_name, x, y, bit_width = node_str[1:]
-            graph = interconnect.get_graph(bit_width)
-            return graph.get_tile(x, y).switchbox.reg_muxs[rmux_name]
-        else:
-            raise Exception("Unknown node " + " ".join(node_str_))
-
     for net_id, raw_routes in raw_routing_result.items():
         result[net_id] = []
         for raw_segment in raw_routes:
             segment = []
             for node_str in raw_segment:
-                node = __parse_node(node_str)
+                node = interconnect.parse_node(node_str)
                 segment.append(node)
             result[net_id].append(segment)
     return result

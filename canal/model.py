@@ -1,26 +1,41 @@
 from canal.interconnect import Interconnect
-from canal.circuit import CB, SB, Node
-from typing import Dict, List
+from canal.circuit import CB, SB, Node, RegisterNode
+from typing import Dict, List, Set
 
 
 class InterconnectModel:
-    def __init__(self, connected_pairs: Dict[Node, Node],
-                 interface: List[Node]):
+    def __init__(self, connected_pairs: Dict[Node, Set[Node]],
+                 interface: Dict[str, Node]):
         self._connected_pairs = connected_pairs
         self.interface = interface
 
         self._values: Dict[Node, int] = {}
+        self._reg_values: Dict[Node, int] = {}
+
+        # initialize everything to 0
+        for from_, to_set in self._connected_pairs.items():
+            if from_ not in self._values:
+                self._values[from_] = 0
+                if isinstance(from_, RegisterNode) and \
+                        from_ not in self._reg_values:
+                    self._reg_values[from_] = 0
+            for to in to_set:
+                if to not in self._connected_pairs.items():
+                    self._values[to] = 0
+                    if isinstance(to, RegisterNode) and \
+                            to not in self._reg_values:
+                        self._reg_values[to] = 0
 
     def eval(self):
         pass
 
-    def set_value(self, node, value):
-        assert node in self.interface
-        self._values[node] = value
+    def set_value(self, node_name: str, value: int):
+        assert node_name in self.interface
+        self._values[self.interface[node_name]] = value
 
-    def get_value(self, node):
-        assert node in self.interface
-        return self._values[node]
+    def get_value(self, node_name: str) -> int:
+        assert node_name in self.interface
+        return self._values[self.interface[node_name]]
 
 
 class InterconnectModelCompiler:
@@ -36,6 +51,7 @@ class InterconnectModelCompiler:
         # based on the configuration, prune the graph
         connected_pair = self.config_graph()
         interface = self.interconnect.interface()
+        return InterconnectModel(connected_pair, interface)
 
     def decode_bitstream_feature(self, addr):
         tile_id = addr & (0xFFFFFFFF >> (32 - self.interconnect.tile_id_width))
