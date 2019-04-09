@@ -192,7 +192,6 @@ class SwitchBoxNode(Node):
         return super().__hash__() ^ hash(self.track) ^ hash(self.side) ^ \
             hash(self.io)
 
-
 class RegisterMuxNode(Node):
     def __init__(self, x: int, y: int, track: int, width: int,
                  side: SwitchBoxSide):
@@ -359,6 +358,25 @@ class SwitchBox:
         self.registers[reg.name] = reg
         self.reg_muxs[reg_mux.name] = reg_mux
 
+    def clone(self):
+        switchbox = SwitchBox(self.x, self.y, self.num_track, self.width,
+                              self.internal_wires)
+        # clone other regs and reg muxs
+        for reg_name, reg_node in self.registers.items():
+            switchbox.registers[reg_name] = RegisterNode(reg_node.name,
+                                                         reg_node.x,
+                                                         reg_node.y,
+                                                         reg_node.track,
+                                                         reg_node.width)
+        for mux_name, mux_node in self.reg_muxs.items():
+            switchbox.reg_muxs[mux_name] = RegisterMuxNode(mux_node.x,
+                                                           mux_node.y,
+                                                           mux_node.track,
+                                                           mux_node.width,
+                                                           mux_node.side)
+
+        return switchbox
+
 
 # helper class
 class DisjointSwitchBox(SwitchBox):
@@ -483,6 +501,16 @@ class Tile:
                     height: int = 1) -> "Tile":
         switch = SwitchBox(x, y, num_tracks, bit_width, internal_wires)
         tile = Tile(x, y, bit_width, switch, height)
+        return tile
+
+    def clone(self):
+        # clone the switchbox
+        switchbox = self.switchbox.clone()
+        tile = Tile(self.x, self.y, self.track_width, switchbox, self.height)
+        # tile creates an empty copy of it, so we have to replace it
+        tile.switchbox = switchbox
+        # we don't clone the cores
+        tile.set_core(self.core)
         return tile
 
 
@@ -792,6 +820,67 @@ class InterconnectGraph:
                                track, SwitchBoxIO.SB_IN)
         assert sb_from is not None and sb_to is not None
         sb_from.add_edge(sb_to)
+
+    def clone(self):
+        # clone the graph
+        # tiles first
+        graph = InterconnectGraph(self.bit_width)
+        for (x, y), tile in self.__tiles.items():
+            graph.__tiles[(x, y)] = tile.clone()
+        # clone the switch id list
+        # notice that we are very slopy with the switch id
+        # since the equality check will make it working
+        graph.__switch_ids = self.__switch_ids.copy()
+        # clone the tile grid
+        for row in self.__tile_grid:
+            new_row = []
+            for entry in row:
+                if entry is None:
+                    new_row.append(None)
+                else:
+                    new_row.append(graph.__tiles[(entry.x, entry.y)])
+            graph.__tile_grid.append(new_row)
+
+        # now clone the connections
+        for _, tile in self.__tiles.items():
+            for sb_node in tile.switchbox.get_all_sbs():
+                new_sb_node = self.__locate_node(graph, sb_node)
+                for node in sb_node:
+                    new_node = self.__locate_node(graph, node)
+                    new_sb_node.add_edge(new_node, sb_node.get_edge_cost(node))
+            for _, reg_node in tile.switchbox.registers.items():
+                new_reg_node = self.__locate_node(graph, reg_node)
+                for node in reg_node:
+                    new_node = self.__locate_node(graph, node)
+                    new_reg_node.add_edge(new_node,
+                                          reg_node.get_edge_cost(node))
+            for _, port_node in tile.ports.items():
+                new_port_node = self.__locate_node(graph, port_node)
+                for node in port_node:
+                    new_node = self.__locate_node(graph, node)
+                    new_port_node.add_edge(new_node,
+                                           new_port_node.get_edge_cost(node))
+            for _, reg_mux in tile.switchbox.reg_muxs.items():
+                new_reg_mux = self.__locate_node(graph, reg_mux)
+                for node in reg_mux:
+                    new_node = self.__locate_node(graph, node)
+                    new_reg_mux.add_edge(new_node,
+                                         new_reg_mux.get_edge_cost(node))
+        return graph
+
+    @staticmethod
+    def __locate_node(graph: "InterconnectGraph", node: Node):
+        x, y = node.x, node.y
+        tile = graph.__tiles[(x, y)]
+        if isinstance(node, SwitchBoxNode):
+            return tile.get_sb(node.side, node.track, node.io)
+        elif isinstance(node, PortNode):
+            return tile.ports[node.name]
+        elif isinstance(node, RegisterNode):
+            return tile.switchbox.registers[node.name]
+        else:
+            assert isinstance(node, RegisterMuxNode)
+            return tile.switchbox.reg_muxs[node.name]
 
     def __iter__(self):
         return iter(self.__tiles)

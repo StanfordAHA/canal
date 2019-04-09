@@ -30,6 +30,7 @@ class Interconnect(generator.Generator):
         self.config_data_width = config_data_width
         self.config_addr_width = config_addr_width
         self.tile_id_width = tile_id_width
+        self.stall_signal_width = stall_signal_width
         self.__graphs: Dict[int, InterconnectGraph] = interconnects
 
         self.__tiles: Dict[Tuple[int, int], Dict[int, Tile]] = {}
@@ -482,6 +483,9 @@ class Interconnect(generator.Generator):
 
     def get_graph(self, bit_width: int):
         return self.__graphs[bit_width]
+
+    def get_bit_widths(self):
+        return list(self.__graphs.keys())
 
     def name(self):
         return "Interconnect"
