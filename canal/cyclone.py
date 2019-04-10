@@ -131,6 +131,11 @@ class Node:
     def node_str(self):
         pass
 
+    def clear(self):
+        self.__neighbors.clear()
+        self.__edge_cost.clear()
+        self.__conn_ins.clear()
+
     def __contains__(self, item):
         return item in self.__neighbors
 
@@ -845,32 +850,32 @@ class InterconnectGraph:
         # now clone the connections
         for _, tile in self.__tiles.items():
             for sb_node in tile.switchbox.get_all_sbs():
-                new_sb_node = self.__locate_node(graph, sb_node)
+                new_sb_node = self.locate_node(graph, sb_node)
                 for node in sb_node:
-                    new_node = self.__locate_node(graph, node)
+                    new_node = self.locate_node(graph, node)
                     new_sb_node.add_edge(new_node, sb_node.get_edge_cost(node))
             for _, reg_node in tile.switchbox.registers.items():
-                new_reg_node = self.__locate_node(graph, reg_node)
+                new_reg_node = self.locate_node(graph, reg_node)
                 for node in reg_node:
-                    new_node = self.__locate_node(graph, node)
+                    new_node = self.locate_node(graph, node)
                     new_reg_node.add_edge(new_node,
                                           reg_node.get_edge_cost(node))
             for _, port_node in tile.ports.items():
-                new_port_node = self.__locate_node(graph, port_node)
+                new_port_node = self.locate_node(graph, port_node)
                 for node in port_node:
-                    new_node = self.__locate_node(graph, node)
+                    new_node = self.locate_node(graph, node)
                     new_port_node.add_edge(new_node,
                                            new_port_node.get_edge_cost(node))
             for _, reg_mux in tile.switchbox.reg_muxs.items():
-                new_reg_mux = self.__locate_node(graph, reg_mux)
+                new_reg_mux = self.locate_node(graph, reg_mux)
                 for node in reg_mux:
-                    new_node = self.__locate_node(graph, node)
+                    new_node = self.locate_node(graph, node)
                     new_reg_mux.add_edge(new_node,
                                          new_reg_mux.get_edge_cost(node))
         return graph
 
     @staticmethod
-    def __locate_node(graph: "InterconnectGraph", node: Node):
+    def locate_node(graph: "InterconnectGraph", node: Node):
         x, y = node.x, node.y
         tile = graph.__tiles[(x, y)]
         if isinstance(node, SwitchBoxNode):

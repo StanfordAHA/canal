@@ -69,13 +69,65 @@ def test_clone(num_tracks: int, chip_size: int,
         start_node = rnd.choice(start_nodes)
         end_node = rnd.choice(end_nodes)
         link = {}
+        visited = set()
 
-        def construct_path(node):
-            if node == end_node:
+        def construct_path_(_node):
+            if _node in visited:
+                return
+            if _node == end_node:
                 return
             else:
-                for node_ in node:
-                    link[node_] = node
+                visited.add(_node)
+                nodes_ = list(_node)
+                rnd.shuffle(nodes_)
+                for node__ in nodes_:
+                    link[node__] = _node
+                    construct_path_(node__)
+        construct_path_(start_node)
+        assert end_node in link
+        path = []
+        node_ = end_node
+        while node_ != start_node:
+            path.append(node_)
+            node_ = link[node_]
+        path.append(node_)
+        return path
 
     compiler = InterconnectModelCompiler(interconnect)
     model = compiler.compile()
+
+    route_path: List[Node] = construct_path()
+    # add a PE to it if not
+    has_pe = False
+    for node in route_path:
+        if isinstance(node, PortNode):
+            has_pe = True
+            break
+    if not has_pe:
+        # very likely it's the case
+        has_port_node = False
+        port_node = None
+        pre_node = None
+        for node in route_path:
+            next_nodes = list(node)
+            for next_node in next_nodes:
+                if isinstance(next_node, PortNode):
+                    has_port_node = True
+                    port_node = next_node
+                    pre_node = node
+                    break
+        if not has_port_node or port_node is None:
+            raise Exception("unable to construct a path to test the simulator")
+
+        pre_index = route_path.index(pre_node)
+        next_path_node = route_path[pre_index + 1]
+        output_port_nodes = list(port_node)
+        assert len(output_port_nodes) == 1
+        output_port = output_port_nodes[0]
+        assert next_path_node in output_port, "Unable to find next port node"
+        route_path.insert(pre_index + 1, port_node)
+        route_path.insert(pre_index + 2, output_port)
+
+    config = []
+    for i in range(len(route_path) - 1):
+        pass
