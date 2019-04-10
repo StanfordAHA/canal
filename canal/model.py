@@ -1,6 +1,6 @@
 from canal.interconnect import Interconnect, InterconnectGraph
 from canal.circuit import Node, RegisterNode, PortNode
-from typing import Dict, Set, Tuple, List
+from typing import Dict, Set, Tuple, List, Union
 from gemstone.common.core import Core
 
 
@@ -26,11 +26,11 @@ class InterconnectModel:
                 self._reg_values[node] = 0
 
         # sort to get the eval order
-        self.eval_nodes = self.__topological_sort()
+        self.__eval_nodes = self.__topological_sort()
 
     def eval(self):
         # eval in order
-        for node in self.eval_nodes:
+        for node in self.__eval_nodes:
             from_nodes = node.get_conn_in()
             is_output_port = isinstance(node, PortNode)
             if is_output_port:
@@ -44,7 +44,10 @@ class InterconnectModel:
                     values[from_node] = self._reg_values[from_node]
                 else:
                     values[from_node] = self._values[from_node]
-            if not is_output_port:
+            if len(values) == 0:
+                # input ports, do nothing
+                continue
+            elif not is_output_port:
                 assert len(values) == 1, "Normal nodes can only have one input"
                 # save to values
                 self._values[node] = list(values.values())[0]
@@ -70,7 +73,7 @@ class InterconnectModel:
         visited = {}
         for node in self.nodes:
             visited[node] = False
-        heap = []
+        stack = []
 
         def visit(node_):
             visited[node_] = True
@@ -78,21 +81,31 @@ class InterconnectModel:
             for node__ in node_:
                 if not visited[node__]:
                     visit(node__)
-            heap.append(node_)
+            stack.insert(0, node_)
 
         for node in self.nodes:
             if not visited[node]:
                 visit(node)
-        heap.reverse()
-        return heap
 
-    def set_value(self, node_name: str, value: int):
-        assert node_name in self.interface
-        self._values[self.interface[node_name]] = value
+        return stack
 
-    def get_value(self, node_name: str) -> int:
-        assert node_name in self.interface
-        return self._values[self.interface[node_name]]
+    def set_value(self, node_name: Union[str, Node], value: int):
+        if isinstance(node_name, Node):
+            node = InterconnectGraph.locate_node(self.graphs[node_name.width],
+                                                 node_name)
+            self._values[node] = value
+        else:
+            assert node_name in self.interface
+            self._values[self.interface[node_name]] = value
+
+    def get_value(self, node_name: Union[str, Node]) -> int:
+        if isinstance(node_name, Node):
+            node = InterconnectGraph.locate_node(self.graphs[node_name.width],
+                                                 node_name)
+            return self._values[node]
+        else:
+            assert node_name in self.interface
+            return self._values[self.interface[node_name]]
 
 
 class InterconnectModelCompiler:
@@ -111,7 +124,7 @@ class InterconnectModelCompiler:
     def compile(self) -> InterconnectModel:
         # clone the graph first
         ic = self.interconnect.clone()
-        graphs, nodes = self.prune_graph(ic)
+        graphs, nodes = self.__prune_graph(ic)
         cores = self.__get_cores()
         interface = self.__get_interface(ic.interface(), nodes)
         return InterconnectModel(graphs, nodes, interface, cores)
@@ -147,9 +160,9 @@ class InterconnectModelCompiler:
                 result[name] = node
         return result
 
-    def prune_graph(self, ic: Interconnect) -> Tuple[Dict[int,
-                                                          InterconnectGraph],
-                                                     Set[Node]]:
+    def __prune_graph(self, ic: Interconnect) -> Tuple[Dict[int,
+                                                            InterconnectGraph],
+                                                       Set[Node]]:
         graphs = {}
         nodes = set()
         for bit_width in self.interconnect.get_bit_widths():
@@ -183,5 +196,23 @@ class InterconnectModelCompiler:
 
                 nodes.add(from_node)
                 nodes.add(to_node)
+
+        # second pass to fake port connections so that we can determine the
+        # evaluate order in the graph
+        for route in self._routes:
+            for node in route[1:]:
+                # node is a sink node
+                if not isinstance(node, PortNode):
+                    continue
+                graph = ic.get_graph(node.width)
+                sink_node = InterconnectGraph.locate_node(graph, node)
+                for src_route in self._routes:
+                    src_node = InterconnectGraph.locate_node(graph,
+                                                             src_route[0])
+                    if not isinstance(src_node, PortNode):
+                        continue
+                    if src_node.width == node.width and \
+                            src_node.x == node.x and src_node.y == node.y:
+                        sink_node.add_edge(src_node)
 
         return graphs, nodes

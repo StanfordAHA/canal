@@ -32,6 +32,7 @@ class Interconnect(generator.Generator):
         self.tile_id_width = tile_id_width
         self.stall_signal_width = stall_signal_width
         self.__graphs: Dict[int, InterconnectGraph] = interconnects
+        self.__lifted_ports = lift_ports
 
         self.__tiles: Dict[Tuple[int, int], Dict[int, Tile]] = {}
         self.tile_circuits: Dict[Tuple[int, int], TileCircuit] = {}
@@ -502,7 +503,8 @@ class Interconnect(generator.Generator):
         ic = Interconnect(result_graph, self.config_addr_width,
                           self.config_data_width,
                           self.tile_id_width,
-                          self.stall_signal_width)
+                          self.stall_signal_width,
+                          self.__lifted_ports)
         return ic
 
     def get_column(self, x: int):

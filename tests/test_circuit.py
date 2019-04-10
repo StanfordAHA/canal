@@ -33,11 +33,11 @@ def test_cb(num_tracks: int, bit_width: int):
                          circuit.clk,
                          circuit.reset)
 
-    for config_data in [BitVector(x, data_width) for x in range(num_tracks)]:
+    for config_data in [BitVector[data_width](x) for x in range(num_tracks)]:
         tester.reset()
-        tester.configure(BitVector(0, addr_width), config_data)
-        tester.configure(BitVector(0, addr_width), config_data + 1, False)
-        tester.config_read(BitVector(0, addr_width))
+        tester.configure(BitVector[data_width](0), config_data)
+        tester.configure(BitVector[data_width](0), config_data + 1, False)
+        tester.config_read(BitVector[data_width](0))
         tester.eval()
         tester.expect(circuit.read_config_data, config_data)
         inputs = [fault.random.random_bv(bit_width) for _ in range(num_tracks)]
@@ -153,10 +153,10 @@ def test_sb(num_tracks: int, bit_width: int, sb_ctor,
         configs = config_data[i]
         data = test_data[i]
         for addr, index in configs:
-            index = BitVector(index, data_width)
-            tester.configure(BitVector(addr, addr_width), index)
-            tester.configure(BitVector(addr, addr_width), index + 1, False)
-            tester.config_read(BitVector(addr, addr_width))
+            index = BitVector[data_width](index)
+            tester.configure(BitVector[addr_width](addr), index)
+            tester.configure(BitVector[addr_width](addr), index + 1, False)
+            tester.config_read(BitVector[addr_width](addr))
             tester.eval()
             tester.expect(circuit.read_config_data, index)
         if len(configs) == 1:
@@ -304,7 +304,7 @@ def test_tile(num_tracks: int):
 
     # process the raw config data and change it into the actual config addr
     for addr, config_value in raw_config_data:
-        addr = BitVector(addr, data_width) | BitVector[data_width](tile_id)
+        addr = BitVector[data_width](addr) | BitVector[data_width](tile_id)
         config_data.append((addr, config_value))
 
     assert len(config_data) / 2 == len(test_data)

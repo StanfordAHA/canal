@@ -1,18 +1,16 @@
 from canal.model import *
 from gemstone.common.dummy_core_magma import DummyCore
 from canal.util import *
-import pytest
-import random
 
 
-@pytest.mark.parametrize("num_tracks", [2, 4])
-@pytest.mark.parametrize("chip_size", [2, 4])
-@pytest.mark.parametrize("reg_mode", [True, False])
-def test_clone(num_tracks: int, chip_size: int,
-               reg_mode: bool):
+def test_simulation():
     addr_width = 8
     data_width = 32
     bit_widths = [1, 16]
+    # test pipeline registers
+    reg_mode = True
+    chip_size = 2
+    num_tracks = 2
 
     tile_id_width = 16
 
@@ -56,78 +54,55 @@ def test_clone(num_tracks: int, chip_size: int,
     interconnect = Interconnect(ics, addr_width, data_width, tile_id_width,
                                 lift_ports=True)
 
-    # random path
-    # no loop
-    rnd = random.Random(0)
-    interface = interconnect.interface()
+    # manual route
+    # I wish I can use pycyclone here to do the automatic routing
+    graph = interconnect.get_graph(16)
+    first_path = []
+    start_node = graph.get_sb(0, 0, SwitchBoxSide.WEST,
+                              0, SwitchBoxIO.SB_IN)
+    next_node = graph.get_port(0, 0, "data_in_16b")
+    first_path.append(start_node)
+    first_path.append(next_node)
 
-    def construct_path():
-        start_nodes = [interface[name] for name in interface if
-                       len(interface[name]) > 0]
-        end_nodes = [interface[name] for name in interface if
-                     len(interface[name]) == 0]
-        start_node = rnd.choice(start_nodes)
-        end_node = rnd.choice(end_nodes)
-        link = {}
-        visited = set()
+    second_path = []
+    port_out = graph.get_port(0, 0, "data_out_16b")
+    second_path.append(port_out)
+    # route to a sb node
+    next_node = graph.get_sb(0, 0, SwitchBoxSide.EAST, 0, SwitchBoxIO.SB_OUT)
+    second_path.append(next_node)
+    # append a register as well
+    nodes = list(next_node)
+    nodes = [node for node in nodes if isinstance(node, RegisterNode)]
+    assert len(nodes) == 1
+    reg_node = nodes[0]
+    second_path.append(reg_node)
+    rmux_node = list(reg_node)[0]
+    second_path.append(rmux_node)
+    next_node = list(rmux_node)[0]
+    second_path.append(next_node)
+    next_node = graph.get_sb(1, 0, SwitchBoxSide.EAST, 0, SwitchBoxIO.SB_OUT)
+    second_path.append(next_node)
+    rmux_node = list(next_node)[0]
+    second_path.append(rmux_node)
 
-        def construct_path_(_node):
-            if _node in visited:
-                return
-            if _node == end_node:
-                return
-            else:
-                visited.add(_node)
-                nodes_ = list(_node)
-                rnd.shuffle(nodes_)
-                for node__ in nodes_:
-                    link[node__] = _node
-                    construct_path_(node__)
-        construct_path_(start_node)
-        assert end_node in link
-        path = []
-        node_ = end_node
-        while node_ != start_node:
-            path.append(node_)
-            node_ = link[node_]
-        path.append(node_)
-        return path
-
+    # two paths
+    route_path = [first_path, second_path]
     compiler = InterconnectModelCompiler(interconnect)
+    compiler.configure_route(route_path)
+    # no instruction as we are using dummy
     model = compiler.compile()
 
-    route_path: List[Node] = construct_path()
-    # add a PE to it if not
-    has_pe = False
-    for node in route_path:
-        if isinstance(node, PortNode):
-            has_pe = True
-            break
-    if not has_pe:
-        # very likely it's the case
-        has_port_node = False
-        port_node = None
-        pre_node = None
-        for node in route_path:
-            next_nodes = list(node)
-            for next_node in next_nodes:
-                if isinstance(next_node, PortNode):
-                    has_port_node = True
-                    port_node = next_node
-                    pre_node = node
-                    break
-        if not has_port_node or port_node is None:
-            raise Exception("unable to construct a path to test the simulator")
+    # poke values
+    start = first_path[0]
+    end = second_path[-1]
 
-        pre_index = route_path.index(pre_node)
-        next_path_node = route_path[pre_index + 1]
-        output_port_nodes = list(port_node)
-        assert len(output_port_nodes) == 1
-        output_port = output_port_nodes[0]
-        assert next_path_node in output_port, "Unable to find next port node"
-        route_path.insert(pre_index + 1, port_node)
-        route_path.insert(pre_index + 2, output_port)
-
-    config = []
-    for i in range(len(route_path) - 1):
-        pass
+    num_data_points = 10
+    values = []
+    for i in range(num_data_points):
+        values.append(i + 1)
+    for idx, value in enumerate(values):
+        model.set_value(start, value)
+        model.eval()
+        if idx > 0:
+            # one pipeline register
+            assert model.get_value(end) == values[idx - 1]
