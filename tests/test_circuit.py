@@ -35,14 +35,14 @@ def test_cb(num_tracks: int, bit_width: int):
 
     for config_data in [BitVector[data_width](x) for x in range(num_tracks)]:
         tester.reset()
-        tester.configure(BitVector[data_width](0), config_data)
-        tester.configure(BitVector[data_width](0), config_data + 1, False)
-        tester.config_read(BitVector[data_width](0))
+        tester.configure(BitVector[addr_width](0), config_data)
+        tester.configure(BitVector[addr_width](0), config_data + 1, False)
+        tester.config_read(BitVector[addr_width](0))
         tester.eval()
         tester.expect(circuit.read_config_data, config_data)
         inputs = [fault.random.random_bv(bit_width) for _ in range(num_tracks)]
         for i, input_ in enumerate(inputs):
-            tester.poke(circuit.I[i], input_)
+            tester.poke(circuit.I[i], BitVector[bit_width](input_))
         tester.eval()
         tester.expect(circuit.O, inputs[config_data.as_uint()])
 
