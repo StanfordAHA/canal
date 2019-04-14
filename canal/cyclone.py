@@ -93,8 +93,10 @@ class Node:
         self.__conn_ins = []
         self.__edge_cost = {}
 
-    def add_edge(self, node: "Node", delay: int = 0):
-        assert self.width == node.width
+    def add_edge(self, node: "Node", delay: int = 0,
+                 force_connect: bool = False):
+        if not force_connect:
+            assert self.width == node.width
         if node not in self.__neighbors:
             self.__neighbors.add(node)
             node.__conn_ins.append(self)
