@@ -35,13 +35,11 @@ def __parse_raw_routing_result(filename):
     return routes
 
 
-def load_routing_result(filename, interconnect: Interconnect):
+def parse_routing_result(raw_routing_result, interconnect: Interconnect):
     # in the original cyclone implementation we don't need this
     # since it just translate this IR into bsb format without verifying the
     # connectivity. here, however, we need to since we're producing bitstream
-    raw_routing_result = __parse_raw_routing_result(filename)
     result = {}
-
     for net_id, raw_routes in raw_routing_result.items():
         result[net_id] = []
         for raw_segment in raw_routes:
@@ -51,6 +49,14 @@ def load_routing_result(filename, interconnect: Interconnect):
                 segment.append(node)
             result[net_id].append(segment)
     return result
+
+
+def load_routing_result(filename, interconnect: Interconnect):
+    # in the original cyclone implementation we don't need this
+    # since it just translate this IR into bsb format without verifying the
+    # connectivity. here, however, we need to since we're producing bitstream
+    raw_routing_result = __parse_raw_routing_result(filename)
+    return parse_routing_result(raw_routing_result, interconnect)
 
 
 def load_placement(filename):
