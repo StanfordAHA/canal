@@ -11,5 +11,6 @@ setup(
         "mantle",
         "hwtypes",
         "ordered_set",
+        "pyverilog"
     ],
 )
