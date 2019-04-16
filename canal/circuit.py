@@ -9,6 +9,8 @@ from .cyclone import Node, PortNode, Tile, SwitchBoxNode, SwitchBoxIO, \
     SwitchBox, InterconnectCore, RegisterNode, RegisterMuxNode
 import mantle
 from gemstone.common.mux_wrapper import MuxWrapper
+from gemstone.common.mux_wrapper_aoi_const import AOIConstMuxWrapper 
+from gemstone.common.mux_wrapper_aoi import AOIMuxWrapper
 import magma
 from typing import Dict, Tuple, List
 from abc import abstractmethod
@@ -31,6 +33,35 @@ def create_name(name: str):
 def get_mux_sel_name(node: Node):
     return f"{create_name(str(node))}_sel"
 
+#AOI-Const Mux 
+def create_aoi_const_mux(node: Node):
+    conn_in = node.get_conn_in()
+    height = len(conn_in)
+    node_name = create_name(str(node))
+    if height > 1:
+        if "MUX" not in node_name:
+            name = f"MUX_{node_name}"
+        else:
+            name = node_name
+    else:
+        name = f"WIRE_{node_name}"
+    mux = AOIConstMuxWrapper(height, node.width, name=name)
+    return mux
+
+#AOI Mux 
+def create_aoi_mux(node: Node):
+    conn_in = node.get_conn_in()
+    height = len(conn_in)
+    node_name = create_name(str(node))
+    if height > 1:
+        if "MUX" not in node_name:
+            name = f"MUX_{node_name}"
+        else:
+            name = node_name
+    else:
+        name = f"WIRE_{node_name}"
+    mux = AOIMuxWrapper(height, node.width, name=name)
+    return mux
 
 def create_mux(node: Node):
     conn_in = node.get_conn_in()
@@ -59,8 +90,8 @@ class CB(InterconnectConfigurable):
         super().__init__(config_addr_width, config_data_width)
 
         self.node: PortNode = node
-        self.mux = create_mux(self.node)
-
+        #self.mux = create_mux(self.node)
+        self.mux = create_aoi_const_mux(self.node) # Use AOI-Const Mux
         # lift the port to the top level
         self.add_ports(
             I=self.mux.ports.I.base_type(),
@@ -184,7 +215,7 @@ class SB(InterconnectConfigurable):
         sbs = self.switchbox.get_all_sbs()
         for sb in sbs:
             sb_name = str(sb)
-            self.sb_muxs[sb_name] = (sb, create_mux(sb))
+            self.sb_muxs[sb_name] = (sb, create_aoi_mux(sb)) #Use AOI Mux
 
     def __create_reg_mux(self):
         for _, reg_mux in self.switchbox.reg_muxs.items():
@@ -207,7 +238,7 @@ class SB(InterconnectConfigurable):
             # we use the sb_name instead so that when we lift the port up,
             # we can use the mux output instead
             sb_name = str(sb_node)
-            self.reg_muxs[sb_name] = (reg_mux, create_mux(reg_mux))
+            self.reg_muxs[sb_name] = (reg_mux, create_aoi_mux(reg_mux))
 
     def __create_reg(self):
         for reg_name, reg_node in self.switchbox.registers.items():
