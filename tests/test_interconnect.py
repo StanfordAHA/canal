@@ -34,11 +34,12 @@ class GlobalSignalWiring(enum.Enum):
 
 
 @pytest.mark.parametrize("num_tracks", [2, 4])
+@pytest.mark.parametrize("use_aoi", [True, False])
 @pytest.mark.parametrize("chip_size", [2, 4])
 @pytest.mark.parametrize("reg_mode", [True, False])
 @pytest.mark.parametrize("wiring", [GlobalSignalWiring.Fanout,
                                     GlobalSignalWiring.Meso])
-def test_interconnect(num_tracks: int, chip_size: int,
+def test_interconnect(num_tracks: int, use_aoi, chip_size: int,
                       reg_mode: bool,
                       wiring: GlobalSignalWiring):
     addr_width = 8
@@ -85,7 +86,7 @@ def test_interconnect(num_tracks: int, chip_size: int,
         ics[bit_width] = ic
 
     interconnect = Interconnect(ics, addr_width, data_width, tile_id_width,
-                                lift_ports=True)
+                                lift_ports=True, use_aoi=use_aoi)
 
     # finalize the design
     interconnect.finalize()
