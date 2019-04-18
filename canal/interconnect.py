@@ -22,7 +22,8 @@ class Interconnect(generator.Generator):
                  config_addr_width: int, config_data_width: int,
                  tile_id_width: int,
                  stall_signal_width: int = 4,
-                 lift_ports=False):
+                 lift_ports=False,
+                 use_aoi: bool = False):
         super().__init__()
 
         self.__interface = {}
@@ -76,7 +77,8 @@ class Interconnect(generator.Generator):
         for coord, tiles in self.__tiles.items():
             self.tile_circuits[coord] =\
                 TileCircuit(tiles, config_addr_width, config_data_width,
-                            stall_signal_width=stall_signal_width)
+                            stall_signal_width=stall_signal_width,
+                            use_aoi=use_aoi)
 
         # we need to deal with inter-tile connections now
         # we only limit mesh
