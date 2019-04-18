@@ -18,7 +18,7 @@ import gemstone.generator.generator as generator
 from gemstone.generator.from_magma import FromMagma
 from mantle import DefineRegister
 from gemstone.generator.const import Const
-
+from power_domain.PDConfig import PDCGRAConfig
 
 def create_name(name: str):
     tokens = " (),"
@@ -84,14 +84,18 @@ class InterconnectConfigurable(Configurable):
 
 class CB(InterconnectConfigurable):
     def __init__(self, node: PortNode,
-                 config_addr_width: int, config_data_width: int):
+                 config_addr_width: int, config_data_width: int,
+                 use_aoi: bool = False):
         if not isinstance(node, PortNode):
             raise ValueError(node, PortNode.__name__)
         super().__init__(config_addr_width, config_data_width)
 
         self.node: PortNode = node
-        #self.mux = create_mux(self.node)
-        self.mux = create_aoi_const_mux(self.node) # Use AOI-Const Mux
+        if use_aoi:
+            self.mux = create_aoi_const_mux(self.node) # Use AOI-Const Mux
+        else:
+            self.mux = create_mux(self.node)
+
         # lift the port to the top level
         self.add_ports(
             I=self.mux.ports.I.base_type(),
@@ -126,7 +130,7 @@ class CB(InterconnectConfigurable):
 
 class SB(InterconnectConfigurable):
     def __init__(self, switchbox: SwitchBox, config_addr_width: int,
-                 config_data_width: int):
+                 config_data_width: int, use_aoi: bool = False):
         super().__init__(config_addr_width, config_data_width)
         self.switchbox = switchbox
 
@@ -138,8 +142,8 @@ class SB(InterconnectConfigurable):
 
         # first pass to create the mux and register circuit
         self.__create_reg()
-        self.__create_sb_mux()
-        self.__create_reg_mux()
+        self.__create_sb_mux(use_aoi)
+        self.__create_reg_mux(use_aoi)
 
         # second pass to lift the ports and wire them
         for sb_name, (sb, mux) in self.sb_muxs.items():
@@ -211,13 +215,15 @@ class SB(InterconnectConfigurable):
         # configuration
         self.mux_name_to_node[name] = node
 
-    def __create_sb_mux(self):
+    def __create_sb_mux(self, use_aoi):
         sbs = self.switchbox.get_all_sbs()
         for sb in sbs:
             sb_name = str(sb)
-            self.sb_muxs[sb_name] = (sb, create_aoi_mux(sb)) #Use AOI Mux
-
-    def __create_reg_mux(self):
+            if use_aoi:
+                self.sb_muxs[sb_name] = (sb, create_aoi_mux(sb)) #Use AOI Mux
+            else:
+                self.sb_muxs[sb_name] = (sb, create_mux(sb))
+    def __create_reg_mux(self, use_aoi):
         for _, reg_mux in self.switchbox.reg_muxs.items():
             # assert the connections to make sure it's a valid register
             # mux
@@ -238,8 +244,10 @@ class SB(InterconnectConfigurable):
             # we use the sb_name instead so that when we lift the port up,
             # we can use the mux output instead
             sb_name = str(sb_node)
-            self.reg_muxs[sb_name] = (reg_mux, create_aoi_mux(reg_mux))
-
+            if use_aoi:
+                self.reg_muxs[sb_name] = (reg_mux, create_aoi_mux(reg_mux)) #use AOI-Mux
+            else:
+                self.reg_muxs[sb_name] = (reg_mux, create_mux(reg_mux))
     def __create_reg(self):
         for reg_name, reg_node in self.switchbox.registers.items():
             reg_cls = DefineRegister(reg_node.width)
@@ -325,6 +333,7 @@ class SB(InterconnectConfigurable):
             self.wire(reg.ports.O, mux.ports.I[idx])
 
 
+#class TileCircuit(Configurable, generator.Generator):
 class TileCircuit(generator.Generator):
     """We merge tiles at the same coordinates with different bit widths
     The only requirements is that the tiles have to be on the same
@@ -337,7 +346,8 @@ class TileCircuit(generator.Generator):
                  config_addr_width: int, config_data_width: int,
                  tile_id_width: int = 16,
                  full_config_addr_width: int = 32,
-                 stall_signal_width: int = 4):
+                 stall_signal_width: int = 4,
+                 use_aoi: bool = False):
         super().__init__()
 
         self.tiles = tiles
@@ -398,7 +408,8 @@ class TileCircuit(generator.Generator):
                         continue
                     # create a CB
                     port_ref = core.get_port_ref(port_node.name)
-                    cb = CB(port_node, config_addr_width, config_data_width)
+                    cb = CB(port_node, config_addr_width, config_data_width,
+                            use_aoi=use_aoi)
                     self.wire(cb.ports.O, port_ref)
                     self.cbs[port_name] = cb
                 else:
@@ -407,7 +418,8 @@ class TileCircuit(generator.Generator):
                     assert bit_width == port_node.width
 
             # switch box time
-            sb = SB(tile.switchbox, config_addr_width, config_data_width)
+            sb = SB(tile.switchbox, config_addr_width, config_data_width,
+                    use_aoi=use_aoi)
             self.sbs[sb.switchbox.width] = sb
 
         # lift all the sb ports up
@@ -729,7 +741,6 @@ class TileCircuit(generator.Generator):
         else:
             return "Tile_Empty"
 
-
 class CoreInterface(InterconnectCore):
     def __init__(self, core: Core):
         super().__init__()
@@ -777,3 +788,5 @@ class CoreInterface(InterconnectCore):
 
     def __eq__(self, other: "CoreInterface"):
         return other.core == self.core
+
+
