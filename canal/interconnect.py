@@ -23,7 +23,7 @@ class Interconnect(generator.Generator):
                  tile_id_width: int,
                  stall_signal_width: int = 4,
                  lift_ports=False,
-                 use_aoi: bool = False):
+                 use_aoi: bool=False):
         super().__init__()
 
         self.__interface = {}
