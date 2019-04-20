@@ -390,20 +390,20 @@ class Interconnect(generator.Generator):
         for core_name in core_names:
             if core_name == "PECore":
                 tag = "p"
-                priority = default_priority
+                priority = default_priority, default_priority
             elif core_name == "MemCore":
                 tag = "m"
-                priority = default_priority - 1
+                priority = default_priority, default_priority - 1
             elif core_name == "io1bit":
                 tag = "i"
-                priority = 1
+                priority = 1, default_priority
             elif core_name == "io16bit":
                 tag = "I"
-                priority = 2
+                priority = 2, default_priority
             else:
                 # use the core_name
                 tag = core_name[0]
-                priority = default_priority
+                priority = default_priority, default_priority
             name_to_tag[core_name] = tag
             assert tag not in tag_to_name, f"{tag} already exists"
             tag_to_name[tag] = core_name
@@ -461,8 +461,8 @@ class Interconnect(generator.Generator):
             name_to_tag, tag_to_name, tag_to_priority \
                 = self.__get_core_tag(core_names, default_priority)
             for core_name, tag in name_to_tag.items():
-                priority = tag_to_priority[tag]
-                f.write(f"LAYOUT {tag} {priority} {default_priority}\n")
+                priority_major, priority_minor = tag_to_priority[tag]
+                f.write(f"LAYOUT {tag} {priority_major} {priority_minor}\n")
                 f.write("BEGIN\n")
                 for y in range(self.y_max + 1):
                     for x in range(self.x_max + 1):
