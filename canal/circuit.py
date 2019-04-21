@@ -18,7 +18,7 @@ import gemstone.generator.generator as generator
 from gemstone.generator.from_magma import FromMagma
 from mantle import DefineRegister
 from gemstone.generator.const import Const
-from power_domain.PDConfig import PDCGRAConfig
+from gemstone.power_domain.PDConfig import PDCGRAConfig
 
 def create_name(name: str):
     tokens = " (),"
