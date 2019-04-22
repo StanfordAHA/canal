@@ -1,6 +1,8 @@
 from hwtypes import BitVector
 from gemstone.common.dummy_core_magma import DummyCore
 from gemstone.common.testers import BasicTester
+
+from canal.checker import check_graph_isomorphic
 from canal.interconnect import *
 import tempfile
 import fault.random
