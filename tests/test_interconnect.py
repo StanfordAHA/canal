@@ -1,6 +1,8 @@
 from hwtypes import BitVector
 from gemstone.common.dummy_core_magma import DummyCore
 from gemstone.common.testers import BasicTester
+
+from canal.checker import check_graph_isomorphic
 from canal.interconnect import *
 import tempfile
 import fault.random
@@ -246,6 +248,13 @@ def test_interconnect(num_tracks: int, chip_size: int,
             layout_old = os.path.join(tempdir_old, "old.layout")
             layout_new = os.path.join(tempdir_new, "new.layout")
             assert filecmp.cmp(layout_old, layout_new)
+
+    # check the construction of graph
+    with tempfile.TemporaryDirectory() as tempdir:
+        rtl_path = os.path.join(tempdir, "rtl")
+        magma.compile(rtl_path, circuit, output="coreir")
+        rtl_path += ".json"
+        check_graph_isomorphic(ics, rtl_path)
 
 
 def test_dump_pnr():
