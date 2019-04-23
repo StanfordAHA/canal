@@ -62,7 +62,7 @@ def get_node(graphs: Dict[int, InterconnectGraph],
         track_num = int(track_str[1:])
         side_str = node_info[1]
         node_side = SwitchBoxSide[side_str]
-        mux_name = f"{node_side}_{track_num}"
+        mux_name = f"{node_side.value}_{track_num}"
         return tile.switchbox.reg_muxs[mux_name]
     else:
         raise NotImplementedError(node_str)
