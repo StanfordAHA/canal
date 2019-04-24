@@ -175,8 +175,8 @@ def connect_io(interconnect: InterconnectGraph,
     width, height = interconnect.get_size()
     x_min, x_max, y_min, y_max = get_array_size(width, height, io_sides)
     # compute tiles and sides
-    for x in range(x_max):
-        for y in range(y_max):
+    for x in range(width):
+        for y in range(height):
             if x in range(x_min, x_max + 1) and \
                     y in range(y_min, y_max + 1):
                 continue
