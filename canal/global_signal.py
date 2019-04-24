@@ -1,10 +1,17 @@
 """Useful pass on interconnect that doesn't deal with the routing network"""
 import magma
 import mantle
+import enum
 from gemstone.common.transform import pass_signal_through, or_reduction
 from gemstone.generator.const import Const
 from gemstone.generator.from_magma import FromMagma
 from .interconnect import Interconnect
+
+
+@enum.unique
+class GlobalSignalWiring(enum.Enum):
+    Fanout = enum.auto()
+    Meso = enum.auto()
 
 
 def apply_global_fanout_wiring(interconnect: Interconnect, margin: int = 0):
