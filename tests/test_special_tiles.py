@@ -44,6 +44,7 @@ def test_empty_switch_box():
 def test_empty_tile_util():
     chip_size = 4
     margin = 1
+    sides = IOSide.North | IOSide.East | IOSide.South | IOSide.West
     bit_widths = [1, 16]
     cores = {}
     track_length = 1
@@ -78,7 +79,7 @@ def test_empty_tile_util():
                                           f"data_out_{bit_width}b": out_conn},
                                          {track_length: num_tracks},
                                          SwitchBoxType.Disjoint,
-                                         margin=margin)
+                                         io_sides=sides)
         ics[bit_width] = ic
     interconnect = Interconnect(ics, addr_width, data_width, tile_id_width)
     interconnect.finalize()
