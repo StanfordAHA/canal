@@ -189,14 +189,14 @@ def connect_io(interconnect: InterconnectGraph,
             if x in range(0, x_min):
                 next_tile = interconnect[(x + 1, y)]
                 side = SwitchBoxSide.WEST
-            elif x in range(x_max, width):
+            elif x in range(x_max + 1, width):
                 next_tile = interconnect[(x - 1, y)]
                 side = SwitchBoxSide.EAST
             elif y in range(0, y_min):
                 next_tile = interconnect[(x, y + 1)]
                 side = SwitchBoxSide.NORTH
             else:
-                assert y in range(y_max, height)
+                assert y in range(y_max + 1, height)
                 next_tile = interconnect[(x, y - 1)]
                 side = SwitchBoxSide.SOUTH
             for input_port, conn in input_port_conn.items():
