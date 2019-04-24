@@ -14,6 +14,14 @@ class SwitchBoxType(enum.Enum):
     Imran = enum.auto()
 
 
+class IOSide(enum.Flag):
+    None_ = enum.auto()
+    North = enum.auto()
+    East = enum.auto()
+    South = enum.auto()
+    West = enum.auto()
+
+
 def compute_num_tracks(x_offset: int, y_offset: int,
                        x: int, y: int, track_info: Dict[int, int]):
     """compute the num of tracks needed for (x, y), given the track
@@ -28,8 +36,15 @@ def compute_num_tracks(x_offset: int, y_offset: int,
     return result
 
 
+def get_array_size(width, height, io_sides):
+    x_min = 1 if io_sides & IOSide.West else 0
+    x_max = width - 2 if io_sides & IOSide.East else width - 1
+    y_min = 1 if io_sides & IOSide.North else 0
+    y_max = height - 2 if io_sides & IOSide.South else height - 1
+    return x_min, x_max, y_min, y_max
+
+
 # helper functions to create column-based CGRA interconnect
-# FIXME: allow IO tiles being created
 def create_uniform_interconnect(width: int,
                                 height: int,
                                 track_width: int,
@@ -41,7 +56,7 @@ def create_uniform_interconnect(width: int,
                                 sb_type: SwitchBoxType,
                                 pipeline_reg:
                                 List[Tuple[int, SwitchBoxSide]] = None,
-                                margin: int = 0,
+                                io_sides: IOSide = IOSide.None_,
                                 io_conn: Dict[str, Dict[str, List[int]]] = None
                                 ) -> InterconnectGraph:
     """Create a uniform interconnect with column-based design. We will use
@@ -64,22 +79,26 @@ def create_uniform_interconnect(width: int,
     :parameter sb_type: Switch box type.
     :parameter pipeline_reg: specifies which track and which side to insert
                              pipeline registers
-    :parameter margin: PE/MEM margin, can only be 0 or 1
+    :parameter io_sides: which side has IO core.
     :parameter io_conn: Specify the IO connections. only valid when margin is
                         set to 1
 
     :return configured Interconnect object
     """
-    assert margin in (0, 1), "margin can either be 0 or 1"
-    if margin == 0 or io_conn is None:
+    if io_sides & IOSide.None_ or io_conn is None:
         io_conn = {"in": {}, "out": {}}
     tile_height = 1
     interconnect = InterconnectGraph(track_width)
+    # based on the IO sides specified. these are inclusive
+    # once it's assigned to None, nullify everything
+    if io_sides & IOSide.None_:
+        io_sides = IOSide.None_
+    x_min, x_max, y_min, y_max = get_array_size(width, height, io_sides)
     # create tiles and set cores
-    for x in range(margin, width - margin):
-        for y in range(margin, height - margin, tile_height):
+    for x in range(x_min, x_max + 1):
+        for y in range(y_min, y_max + 1, tile_height):
             # compute the number of tracks
-            num_track = compute_num_tracks(margin, margin,
+            num_track = compute_num_tracks(x_min, y_min,
                                            x, y, track_info)
             # create switch based on the type passed in
             if sb_type == SwitchBoxType.Disjoint:
@@ -121,16 +140,15 @@ def create_uniform_interconnect(width: int,
     current_track = 0
     for track_len in track_lens:
         for _ in range(track_info[track_len]):
-            interconnect.connect_switchbox(margin, margin, width - margin - 1,
-                                           height - margin - 1,
+            interconnect.connect_switchbox(x_min, y_min, x_max,
+                                           y_max,
                                            track_len,
                                            current_track,
                                            InterconnectPolicy.Ignore)
             current_track += 1
 
     # insert io
-    if margin > 0:
-        connect_io(interconnect, io_conn["in"], io_conn["out"])
+    connect_io(interconnect, io_conn["in"], io_conn["out"], io_sides)
 
     # insert pipeline register
     if pipeline_reg is None:
@@ -148,15 +166,19 @@ def create_uniform_interconnect(width: int,
 
 def connect_io(interconnect: InterconnectGraph,
                input_port_conn: Dict[str, List[int]],
-               output_port_conn: Dict[str, List[int]]):
-    """connect tiles on the margin"""
-    margin = 1
-    x_max, y_max = interconnect.get_size()
+               output_port_conn: Dict[str, List[int]],
+               io_sides: IOSide):
+    """connect tiles on the side"""
+    if io_sides & IOSide.None_:
+        return
+
+    width, height = interconnect.get_size()
+    x_min, x_max, y_min, y_max = get_array_size(width, height, io_sides)
     # compute tiles and sides
     for x in range(x_max):
         for y in range(y_max):
-            if x in range(margin, x_max - margin) and \
-                    y in range(margin, y_max - margin):
+            if x in range(x_min, x_max + 1) and \
+                    y in range(y_min, y_max + 1):
                 continue
             # make sure that these margins tiles have empty switch boxes
             tile = interconnect[(x, y)]
@@ -164,17 +186,17 @@ def connect_io(interconnect: InterconnectGraph,
                 continue
             assert tile.switchbox.num_track == 0
             # compute the nearby tile
-            if x in range(0, margin):
+            if x in range(0, x_min):
                 next_tile = interconnect[(x + 1, y)]
                 side = SwitchBoxSide.WEST
-            elif x in range(x_max - margin, x_max):
+            elif x in range(x_max, width):
                 next_tile = interconnect[(x - 1, y)]
                 side = SwitchBoxSide.EAST
-            elif y in range(0, margin):
+            elif y in range(0, y_min):
                 next_tile = interconnect[(x, y + 1)]
                 side = SwitchBoxSide.NORTH
             else:
-                assert y in range(y_max - margin, y_max)
+                assert y in range(y_max, height)
                 next_tile = interconnect[(x, y - 1)]
                 side = SwitchBoxSide.SOUTH
             for input_port, conn in input_port_conn.items():

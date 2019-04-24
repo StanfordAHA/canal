@@ -1,16 +1,14 @@
 from hwtypes import BitVector
 from gemstone.common.dummy_core_magma import DummyCore
 from gemstone.common.testers import BasicTester
-
 from canal.checker import check_graph_isomorphic
 from canal.interconnect import *
 import tempfile
 import fault.random
 from canal.util import create_uniform_interconnect, SwitchBoxType
 from canal.global_signal import apply_global_fanout_wiring, \
-    apply_global_meso_wiring
+    apply_global_meso_wiring, GlobalSignalWiring
 import pytest
-import enum
 import filecmp
 
 
@@ -26,13 +24,6 @@ def assert_tile_coordinate(tile: Tile, x: int, y: int):
 
 def assert_coordinate(node: Node, x: int, y: int):
     assert node.x == x and node.y == y
-
-
-# add enum to make pytest more readable
-@enum.unique
-class GlobalSignalWiring(enum.Enum):
-    Fanout = enum.auto()
-    Meso = enum.auto()
 
 
 @pytest.mark.parametrize("num_tracks", [2, 4])
