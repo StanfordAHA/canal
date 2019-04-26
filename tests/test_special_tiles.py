@@ -84,7 +84,7 @@ def test_empty_tile_util():
     interconnect = Interconnect(ics, addr_width, data_width, tile_id_width)
     interconnect.finalize()
     # wiring
-    apply_global_meso_wiring(interconnect, margin=margin)
+    apply_global_meso_wiring(interconnect, io_sides=sides)
 
     circuit = interconnect.circuit()
     with tempfile.TemporaryDirectory() as tempdir:
