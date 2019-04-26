@@ -23,6 +23,7 @@ def apply_global_fanout_wiring(interconnect: Interconnect, io_sides: IOSide):
     cgra_width = x_max - x_min + 1
     interconnect_read_data_or = \
         FromMagma(mantle.DefineOr(cgra_width, interconnect.config_data_width))
+    interconnect_read_data_or.instance_name = "read_config_data_or_final"
     # this is connected on a per-column bases
     for x in range(x_min, x_max + 1):
         column = interconnect.get_column(x)
@@ -32,6 +33,7 @@ def apply_global_fanout_wiring(interconnect: Interconnect, io_sides: IOSide):
         column_read_data_or = \
             FromMagma(mantle.DefineOr(len(column),
                       interconnect.config_data_width))
+        column_read_data_or.instance_name = f"read_config_data_or_col_{x}"
         for idx, tile in enumerate(column):
             for signal_name in global_ports:
                 interconnect.wire(interconnect.ports[signal_name],
@@ -60,6 +62,7 @@ def apply_global_meso_wiring(interconnect: Interconnect,  io_sides: IOSide):
     cgra_width = x_max - x_min + 1
     interconnect_read_data_or = \
         FromMagma(mantle.DefineOr(cgra_width, interconnect.config_data_width))
+    interconnect_read_data_or.instance_name = "read_config_data_or_final"
 
     # looping through on a per-column bases
     for x in range(x_min, x_max + 1):
