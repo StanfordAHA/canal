@@ -221,6 +221,24 @@ class RegisterMuxNode(Node):
         return super().__hash__() ^ hash(self.track) ^ hash(self.side)
 
 
+class ConstNode(Node):
+    """This node is for PowerDomain only. It will not appear in the
+    dumped routing graph"""
+
+    def __init__(self, x: int, y: int, width: int, value: int = 0):
+        super().__init__(x, y, width)
+        self.value = value
+
+    def __repr__(self):
+        return f"CONST_{self.value}"
+
+    def __hash__(self):
+        return super().__hash__() ^ self.value.__hash__()
+
+    def node_str(self):
+        return ValueError("Const Node should be be used in PnR")
+
+
 class SwitchBox:
     def __init__(self, x: int, y: int, num_track: int, width: int,
                  internal_wires: List[Tuple[int, SwitchBoxSide,

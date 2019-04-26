@@ -19,8 +19,6 @@ class PowerDomainFixer:
         self._placement = placement
         self._route = route
 
-        self._default_muxes: Dict[Tuple[int, int], List[Node]] = {}
-
         self._nop_instruction = {}
 
     def add_nop_instruction(self, bit_width: int, x: int, y: int, instr):
@@ -123,6 +121,11 @@ class PowerDomainFixer:
                 for sb in sbs:
                     # we only care about the default connection
                     for node in sb:
+                        # the pipeline register complicated things a little
+                        # bit
+                        if isinstance(node, RegisterMuxNode):
+                            assert len(node) == 1
+                            node = list(node)[0]
                         pos = node.x, node.y
                         if pos in always_on:
                             result.add(sb)
@@ -141,9 +144,12 @@ class PowerDomainFixer:
 
         return result
 
-    @staticmethod
-    def __get_new_routing(target_sb: OrderedSet[Node]):
+    def __get_new_routing(self, target_sb: OrderedSet[Node]):
         result = {}
+        finished_tiles = {}
+        for width in self._interconnect.get_bit_widths():
+            finished_tiles[width] = set()
+
         for sb in target_sb:
             # get the port node in the incoming connections
             conn_in = sb.get_conn_in()
@@ -159,4 +165,30 @@ class PowerDomainFixer:
             new_segment = [port_node, sb]
             net_id = f"pd{len(result)}"
             result[net_id] = [new_segment]
+
+            # we also need to toggle the CB connection
+            loc = sb.x, sb.y
+            width = sb.width
+            if loc not in finished_tiles[width]:
+                finished_tiles[width].add(loc)
+
+                # find the CB with same bit width
+                width = sb.width
+                graph = self._interconnect.get_graph(width)
+                tile = graph[loc]
+                for _, cb_node in tile.ports.items():
+                    if cb_node.width == width:
+                        conn_in = cb_node.get_conn_in()
+                        const_node = None
+
+                        for node in conn_in:
+                            if isinstance(node, ConstNode):
+                                const_node = node
+                                break
+                        assert const_node is not None,\
+                            "CB has to have a constant connected"
+                        new_segment = [const_node, cb_node]
+                        net_id = f"pd{len(result)}"
+                        result[net_id] = [new_segment]
+
         return result
