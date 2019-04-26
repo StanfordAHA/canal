@@ -373,37 +373,24 @@ class Interconnect(generator.Generator):
             result[i] = (addr, data)
         return result
 
-    def __find_cores(self):
-        result = set()
+    def __get_core_info(self):
+        result = {}
         for coord in self.tile_circuits:
             tile = self.tile_circuits[coord]
+            info = tile.core.pnr_info()
             core_name = tile.core.name()
-            result.add(core_name)
+            if core_name not in result:
+                result[core_name] = info
+            else:
+                assert result[core_name] == info
         return result
 
     @staticmethod
-    def __get_core_tag(core_names, default_priority):
-        # TODO: refactor this to garnet/gemstone
+    def __get_core_tag(core_info):
         name_to_tag = {}
         tag_to_name = {}
         tag_to_priority = {}
-        for core_name in core_names:
-            if core_name == "PECore":
-                tag = "p"
-                priority = default_priority, default_priority
-            elif core_name == "MemCore":
-                tag = "m"
-                priority = default_priority, default_priority - 1
-            elif core_name == "io1bit":
-                tag = "i"
-                priority = 1, default_priority
-            elif core_name == "io16bit":
-                tag = "I"
-                priority = 2, default_priority
-            else:
-                # use the core_name
-                tag = core_name[0]
-                priority = default_priority, default_priority
+        for core_name, (tag, priority) in core_info.items():
             name_to_tag[core_name] = tag
             assert tag not in tag_to_name, f"{tag} already exists"
             tag_to_name[tag] = core_name
@@ -457,9 +444,9 @@ class Interconnect(generator.Generator):
             # looping through the tiles to figure what core it has
             # use default priority 20
             default_priority = 20
-            core_names = self.__find_cores()
+            core_info = self.__get_core_info()
             name_to_tag, tag_to_name, tag_to_priority \
-                = self.__get_core_tag(core_names, default_priority)
+                = self.__get_core_tag(core_info)
             for core_name, tag in name_to_tag.items():
                 priority_major, priority_minor = tag_to_priority[tag]
                 f.write(f"LAYOUT {tag} {priority_major} {priority_minor}\n")
