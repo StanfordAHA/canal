@@ -5,7 +5,7 @@ from canal.checker import check_graph_isomorphic
 from canal.interconnect import *
 import tempfile
 import fault.random
-from canal.util import create_uniform_interconnect, SwitchBoxType
+from canal.util import create_uniform_interconnect, SwitchBoxType, IOSide
 from canal.global_signal import apply_global_fanout_wiring, \
     apply_global_meso_wiring, GlobalSignalWiring
 import pytest
@@ -85,10 +85,10 @@ def test_interconnect(num_tracks: int, chip_size: int,
 
     # wiring
     if wiring == GlobalSignalWiring.Fanout:
-        apply_global_fanout_wiring(interconnect)
+        apply_global_fanout_wiring(interconnect, IOSide.None_)
     else:
         assert wiring == GlobalSignalWiring.Meso
-        apply_global_meso_wiring(interconnect)
+        apply_global_meso_wiring(interconnect, IOSide.None_)
 
     # assert tile coordinates
     for (x, y), tile_circuit in interconnect.tile_circuits.items():
