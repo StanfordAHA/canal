@@ -7,7 +7,8 @@ import tempfile
 import fault.random
 from canal.util import create_uniform_interconnect, SwitchBoxType, IOSide
 from canal.global_signal import apply_global_fanout_wiring, \
-    apply_global_meso_wiring, GlobalSignalWiring
+    apply_global_meso_wiring, apply_global_parallel_meso_wiring, \
+    GlobalSignalWiring
 import pytest
 import filecmp
 
@@ -26,7 +27,7 @@ def assert_coordinate(node: Node, x: int, y: int):
     assert node.x == x and node.y == y
 
 
-def create_dummy_cgra(chip_size, num_tracks, reg_mode, wiring):
+def create_dummy_cgra(chip_size, num_tracks, reg_mode, wiring, num_cfg=1):
     addr_width = 8
     data_width = 32
     bit_widths = [1, 16]
@@ -72,9 +73,12 @@ def create_dummy_cgra(chip_size, num_tracks, reg_mode, wiring):
     # wiring
     if wiring == GlobalSignalWiring.Fanout:
         apply_global_fanout_wiring(interconnect, IOSide.None_)
-    else:
-        assert wiring == GlobalSignalWiring.Meso
+    elif wiring == GlobalSignalWiring.Meso:
         apply_global_meso_wiring(interconnect, IOSide.None_)
+    else:
+        assert wiring == GlobalSignalWiring.ParallelMeso
+        apply_global_parallel_meso_wiring(interconnect, IOSide.None_, num_cfg)
+
     return bit_widths, data_width, ics, interconnect
 
 
@@ -304,3 +308,19 @@ def test_dump_pnr():
         assert os.path.isfile(os.path.join(tempdir, "1.graph"))
         assert os.path.isfile(os.path.join(tempdir, "16.graph"))
         assert os.path.isfile(os.path.join(tempdir, f"{design_name}.layout"))
+
+
+@pytest.mark.parametrize("num_cfg", [1, 2, 4])
+def test_parallel_meso_wiring(num_cfg: int):
+    _, _, _, interconnect = create_dummy_cgra(2,
+                                              2,
+                                              True,
+                                              GlobalSignalWiring.ParallelMeso,
+                                              num_cfg)
+    # assert tile coordinates
+    circuit = interconnect.circuit()
+
+    # just check it compiles to rtl
+    with tempfile.TemporaryDirectory() as tempdir:
+        rtl_path = os.path.join(tempdir, "rtl")
+        magma.compile(rtl_path, circuit, output="coreir-verilog")
