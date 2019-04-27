@@ -26,22 +26,12 @@ def assert_coordinate(node: Node, x: int, y: int):
     assert node.x == x and node.y == y
 
 
-@pytest.mark.parametrize("num_tracks", [2, 4])
-@pytest.mark.parametrize("chip_size", [2, 4])
-@pytest.mark.parametrize("reg_mode", [True, False])
-@pytest.mark.parametrize("wiring", [GlobalSignalWiring.Fanout,
-                                    GlobalSignalWiring.Meso])
-def test_interconnect(num_tracks: int, chip_size: int,
-                      reg_mode: bool,
-                      wiring: GlobalSignalWiring):
+def create_dummy_cgra(chip_size, num_tracks, reg_mode, wiring):
     addr_width = 8
     data_width = 32
     bit_widths = [1, 16]
-
     tile_id_width = 16
-
     track_length = 1
-
     # creates all the cores here
     # we don't want duplicated cores when snapping into different interconnect
     # graphs
@@ -58,7 +48,6 @@ def test_interconnect(num_tracks: int, chip_size: int,
     for side in SwitchBoxSide:
         in_conn.append((side, SwitchBoxIO.SB_IN))
         out_conn.append((side, SwitchBoxIO.SB_OUT))
-
     pipeline_regs = []
     for track in range(num_tracks):
         for side in SwitchBoxSide:
@@ -76,19 +65,31 @@ def test_interconnect(num_tracks: int, chip_size: int,
                                          SwitchBoxType.Disjoint,
                                          pipeline_regs)
         ics[bit_width] = ic
-
     interconnect = Interconnect(ics, addr_width, data_width, tile_id_width,
                                 lift_ports=True)
-
     # finalize the design
     interconnect.finalize()
-
     # wiring
     if wiring == GlobalSignalWiring.Fanout:
         apply_global_fanout_wiring(interconnect, IOSide.None_)
     else:
         assert wiring == GlobalSignalWiring.Meso
         apply_global_meso_wiring(interconnect, IOSide.None_)
+    return bit_widths, data_width, ics, interconnect
+
+
+@pytest.mark.parametrize("num_tracks", [2, 4])
+@pytest.mark.parametrize("chip_size", [2, 4])
+@pytest.mark.parametrize("reg_mode", [True, False])
+@pytest.mark.parametrize("wiring", [GlobalSignalWiring.Fanout,
+                                    GlobalSignalWiring.Meso])
+def test_interconnect(num_tracks: int, chip_size: int,
+                      reg_mode: bool,
+                      wiring: GlobalSignalWiring):
+    bit_widths, data_width, ics, interconnect = create_dummy_cgra(chip_size,
+                                                                  num_tracks,
+                                                                  reg_mode,
+                                                                  wiring)
 
     # assert tile coordinates
     for (x, y), tile_circuit in interconnect.tile_circuits.items():
