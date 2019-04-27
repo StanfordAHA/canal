@@ -226,7 +226,7 @@ class Interconnect(generator.Generator):
                             len(port_node.get_conn_in()) == 0:
                         # lift this port up
                         x, y = coord
-                        new_port_name = f"{port_name}_X{x}_Y{y}"
+                        new_port_name = f"{port_name}_X{x:02X}_Y{y:02X}"
                         self.add_port(new_port_name, tile_port.base_type())
                         self.__interface[new_port_name] = port_node
                         self.wire(self.ports[new_port_name], tile_port)
