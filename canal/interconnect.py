@@ -7,6 +7,7 @@ from typing import Dict, Tuple, List
 import gemstone.generator.generator as generator
 from .circuit import TileCircuit, create_name
 from gemstone.common.configurable import ConfigurationType
+from gemstone.common.core import PnRTag
 from gemstone.generator.const import Const
 import enum
 
@@ -373,41 +374,33 @@ class Interconnect(generator.Generator):
             result[i] = (addr, data)
         return result
 
-    def __find_cores(self):
-        result = set()
+    def __get_core_info(self) -> Dict[str, Tuple[PnRTag, List[PnRTag]]]:
+        result = {}
         for coord in self.tile_circuits:
             tile = self.tile_circuits[coord]
+            info = tile.core.pnr_info()
             core_name = tile.core.name()
-            result.add(core_name)
+            if core_name not in result:
+                result[core_name] = info
+            else:
+                assert result[core_name] == info
         return result
 
     @staticmethod
-    def __get_core_tag(core_names, default_priority):
-        # TODO: refactor this to garnet/gemstone
+    def __get_core_tag(core_info):
         name_to_tag = {}
         tag_to_name = {}
         tag_to_priority = {}
-        for core_name in core_names:
-            if core_name == "PECore":
-                tag = "p"
-                priority = default_priority, default_priority
-            elif core_name == "MemCore":
-                tag = "m"
-                priority = default_priority, default_priority - 1
-            elif core_name == "io1bit":
-                tag = "i"
-                priority = 1, default_priority
-            elif core_name == "io16bit":
-                tag = "I"
-                priority = 2, default_priority
-            else:
-                # use the core_name
-                tag = core_name[0]
-                priority = default_priority, default_priority
-            name_to_tag[core_name] = tag
-            assert tag not in tag_to_name, f"{tag} already exists"
-            tag_to_name[tag] = core_name
-            tag_to_priority[tag] = priority
+        for core_name, tags in core_info.items():
+            if not isinstance(tags, list):
+                tags = [tags]
+            for tag in tags:    # type: PnRTag
+                tag_name = tag.tag_name
+                name_to_tag[core_name] = tag_name
+                assert tag_name not in tag_to_name, f"{tag_name} already exists"
+                tag_to_name[tag_name] = core_name
+                tag_to_priority[tag_name] = (tag.priority_major,
+                                             tag.priority_minor)
         return name_to_tag, tag_to_name, tag_to_priority
 
     def __get_registered_tile(self):
@@ -457,9 +450,9 @@ class Interconnect(generator.Generator):
             # looping through the tiles to figure what core it has
             # use default priority 20
             default_priority = 20
-            core_names = self.__find_cores()
+            core_info = self.__get_core_info()
             name_to_tag, tag_to_name, tag_to_priority \
-                = self.__get_core_tag(core_names, default_priority)
+                = self.__get_core_tag(core_info)
             for core_name, tag in name_to_tag.items():
                 priority_major, priority_minor = tag_to_priority[tag]
                 f.write(f"LAYOUT {tag} {priority_major} {priority_minor}\n")
