@@ -128,7 +128,8 @@ def apply_global_meso_wiring(interconnect: Interconnect,  io_sides: IOSide):
 def apply_global_parallel_meso_wiring(interconnect: Interconnect,
                                       io_sides: IOSide, num_cfg: int = 1):
 
-    interconnect_read_data_or = apply_global_meso_wiring(interconnect, io_sides)
+    interconnect_read_data_or = apply_global_meso_wiring(interconnect,
+                                                         io_sides)
     # interconnect must have config port
     assert "config" in interconnect.ports
     # there must be at least one configuration path
@@ -137,9 +138,9 @@ def apply_global_parallel_meso_wiring(interconnect: Interconnect,
     interconnect.remove_port("config")
     # this is not a typo. Total number of bits in configration address
     # is same as config_data
-    interconnect.add_port("config", \
-        magma.In(magma.Array[num_cfg, \
-        ConfigurationType(interconnect.config_data_width, \
+    interconnect.add_port("config",
+        magma.In(magma.Array[num_cfg,
+        ConfigurationType(interconnect.config_data_width,
         interconnect.config_data_width)]))
 
     cgra_width = interconnect.x_max - interconnect.x_min + 1
