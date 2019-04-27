@@ -136,12 +136,14 @@ def apply_global_parallel_meso_wiring(interconnect: Interconnect,
     assert num_cfg >= 1
 
     interconnect.remove_port("config")
-    # this is not a typo. Total number of bits in configration address
+    # this is not a typo. Total number of bits in configuration address
     # is same as config_data
-    interconnect.add_port("config",
+    config_data_width = interconnect.config_data_width
+    interconnect.add_port(
+        "config",
         magma.In(magma.Array[num_cfg,
-        ConfigurationType(interconnect.config_data_width,
-        interconnect.config_data_width)]))
+                             ConfigurationType(config_data_width,
+                                               config_data_width)]))
 
     cgra_width = interconnect.x_max - interconnect.x_min + 1
     # number of CGRA columns one configuration controller is in charge of
@@ -152,7 +154,7 @@ def apply_global_parallel_meso_wiring(interconnect: Interconnect,
         column = interconnect.get_column(x_coor)
         # skip tiles with no config
         column = [entry for entry in column if "config" in entry.ports]
-        # select which configuartion controller is connected to that column
+        # select which configuration controller is connected to that column
         config_sel = int(x_coor/col_per_config)
         # wire configuration ports to first tile in column
         interconnect.wire(interconnect.ports.config[config_sel],
