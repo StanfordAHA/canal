@@ -7,6 +7,7 @@ from typing import Dict, Tuple, List
 import gemstone.generator.generator as generator
 from .circuit import TileCircuit, create_name
 from gemstone.common.configurable import ConfigurationType
+from gemstone.common.core import PnRTag
 from gemstone.generator.const import Const
 import enum
 
@@ -373,7 +374,7 @@ class Interconnect(generator.Generator):
             result[i] = (addr, data)
         return result
 
-    def __get_core_info(self):
+    def __get_core_info(self) -> Dict[str, Tuple[PnRTag, List[PnRTag]]]:
         result = {}
         for coord in self.tile_circuits:
             tile = self.tile_circuits[coord]
@@ -390,11 +391,16 @@ class Interconnect(generator.Generator):
         name_to_tag = {}
         tag_to_name = {}
         tag_to_priority = {}
-        for core_name, (tag, priority) in core_info.items():
-            name_to_tag[core_name] = tag
-            assert tag not in tag_to_name, f"{tag} already exists"
-            tag_to_name[tag] = core_name
-            tag_to_priority[tag] = priority
+        for core_name, tags in core_info.items():
+            if not isinstance(tags, list):
+                tags = [tags]
+            for tag in tags:    # type: PnRTag
+                tag_name = tag.tag_name
+                name_to_tag[core_name] = tag_name
+                assert tag_name not in tag_to_name, f"{tag_name} already exists"
+                tag_to_name[tag_name] = core_name
+                tag_to_priority[tag_name] = (tag.priority_major,
+                                             tag.priority_minor)
         return name_to_tag, tag_to_name, tag_to_priority
 
     def __get_registered_tile(self):
