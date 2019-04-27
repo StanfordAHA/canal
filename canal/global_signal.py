@@ -2,9 +2,11 @@
 import magma
 import mantle
 import enum
+import math
 from gemstone.common.transform import pass_signal_through, or_reduction
 from gemstone.generator.const import Const
 from gemstone.generator.from_magma import FromMagma
+from gemstone.common.configurable import ConfigurationType
 from .interconnect import Interconnect
 from .util import IOSide, get_array_size
 
@@ -13,6 +15,7 @@ from .util import IOSide, get_array_size
 class GlobalSignalWiring(enum.Enum):
     Fanout = enum.auto()
     Meso = enum.auto()
+    ParallelMeso = enum.auto()
 
 
 def apply_global_fanout_wiring(interconnect: Interconnect, io_sides: IOSide):
@@ -118,5 +121,40 @@ def apply_global_meso_wiring(interconnect: Interconnect,  io_sides: IOSide):
     # wiring the read_config_data
     interconnect.wire(interconnect.ports.read_config_data,
                       interconnect_read_data_or.ports.O)
+
+    return interconnect_read_data_or
+
+
+def apply_global_parallel_meso_wiring(interconnect: Interconnect,
+                                      io_sides: IOSide, num_cfg: int = 1):
+
+    interconnect_read_data_or = apply_global_meso_wiring(interconnect, io_sides)
+    # interconnect must have config port
+    assert "config" in interconnect.ports
+    # there must be at least one configuration path
+    assert num_cfg >= 1
+
+    interconnect.remove_port("config")
+    # this is not a typo. Total number of bits in configration address
+    # is same as config_data
+    interconnect.add_port("config", \
+        magma.In(magma.Array[num_cfg, \
+        ConfigurationType(interconnect.config_data_width, \
+        interconnect.config_data_width)]))
+
+    cgra_width = interconnect.x_max - interconnect.x_min + 1
+    # number of CGRA columns one configuration controller is in charge of
+    col_per_config = math.ceil(cgra_width / num_cfg)
+
+    # looping through on a per-column bases
+    for x_coor in range(interconnect.x_min, interconnect.x_max + 1):
+        column = interconnect.get_column(x_coor)
+        # skip tiles with no config
+        column = [entry for entry in column if "config" in entry.ports]
+        # select which configuartion controller is connected to that column
+        config_sel = int(x_coor/col_per_config)
+        # wire configuration ports to first tile in column
+        interconnect.wire(interconnect.ports.config[config_sel],
+                          column[0].ports.config)
 
     return interconnect_read_data_or
