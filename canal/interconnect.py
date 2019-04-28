@@ -396,7 +396,9 @@ class Interconnect(generator.Generator):
                 tags = [tags]
             for tag in tags:    # type: PnRTag
                 tag_name = tag.tag_name
-                name_to_tag[core_name] = tag_name
+                if core_name not in name_to_tag:
+                    name_to_tag[core_name] = []
+                name_to_tag[core_name].append(tag.tag_name)
                 assert tag_name not in tag_to_name, f"{tag_name} already exists"
                 tag_to_name[tag_name] = core_name
                 tag_to_priority[tag_name] = (tag.priority_major,
@@ -453,21 +455,22 @@ class Interconnect(generator.Generator):
             core_info = self.__get_core_info()
             name_to_tag, tag_to_name, tag_to_priority \
                 = self.__get_core_tag(core_info)
-            for core_name, tag in name_to_tag.items():
-                priority_major, priority_minor = tag_to_priority[tag]
-                f.write(f"LAYOUT {tag} {priority_major} {priority_minor}\n")
-                f.write("BEGIN\n")
-                for y in range(self.y_max + 1):
-                    for x in range(self.x_max + 1):
-                        coord = (x, y)
-                        if coord not in self.tile_circuits or \
-                                self.tile_circuits[
-                                    coord].core.name() != core_name:
-                            f.write("0")
-                        else:
-                            f.write("1")
-                    f.write("\n")
-                f.write("END\n")
+            for core_name, tags in name_to_tag.items():
+                for tag in tags:
+                    priority_major, priority_minor = tag_to_priority[tag]
+                    f.write(f"LAYOUT {tag} {priority_major} {priority_minor}\n")
+                    f.write("BEGIN\n")
+                    for y in range(self.y_max + 1):
+                        for x in range(self.x_max + 1):
+                            coord = (x, y)
+                            if coord not in self.tile_circuits or \
+                                    self.tile_circuits[
+                                        coord].core.name() != core_name:
+                                f.write("0")
+                            else:
+                                f.write("1")
+                        f.write("\n")
+                    f.write("END\n")
             # handle registers
             assert "r" not in tag_to_name
             r_locs = self.__get_registered_tile()
