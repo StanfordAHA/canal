@@ -7,7 +7,7 @@ from typing import Dict, Tuple, List
 import gemstone.generator.generator as generator
 from .circuit import TileCircuit, create_name
 from gemstone.common.configurable import ConfigurationType
-from gemstone.common.core import PnRTag
+from gemstone.common.core import PnRTag, ConfigurableCore
 from gemstone.generator.const import Const
 import enum
 
@@ -361,8 +361,8 @@ class Interconnect(generator.Generator):
     def configure_placement(self, x: int, y: int, instr):
         tile_id = self.__get_tile_id(x, y)
         tile = self.tile_circuits[(x, y)]
-        core = tile.core
-        result = core.configure(instr)
+        core: ConfigurableCore = tile.core
+        result = core.get_config_bitstream(instr)
         # TODO(rsetaluri): Cache this information. Also, this should be
         # refactored and abstracted.
         feature_addr = tile.features().index(core)
