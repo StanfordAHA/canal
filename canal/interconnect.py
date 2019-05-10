@@ -163,6 +163,15 @@ class Interconnect(generator.Generator):
             self.wire(tile.ports.tile_id,
                       Const(magma.bits(tile_id, self.tile_id_width)))
 
+    def get_config_addr(self, reg_addr: int, feat_addr: int, x: int, y: int):
+        tile_id = self.__get_tile_id(x, y)
+        tile = self.tile_circuits[(x, y)]
+        addr = (reg_addr << tile.feature_config_slice.start) | \
+               (feat_addr << tile.tile_id_width)
+        addr = addr | tile_id
+        return addr
+
+
     def __lift_ports(self):
         # we assume it's a rectangular grid
         # we only care about the perimeter
@@ -334,9 +343,9 @@ class Interconnect(generator.Generator):
         # this is the complete one which includes the tile_id
         x, y = dst_node.x, dst_node.y
         tile = self.tile_circuits[(x, y)]
-        addr, data = tile.get_route_bitstream_config(src_node, dst_node)
-        tile_id = self.__get_tile_id(x, y)
-        addr = addr | tile_id
+        reg_addr, feat_addr, data = tile.get_route_bitstream_config(src_node,
+                                                                    dst_node)
+        addr = self.get_config_addr(reg_addr, feat_addr, x, y)
         return addr, data
 
     def get_route_bitstream(self, routes: Dict[str, List[List[Node]]]):
@@ -359,18 +368,13 @@ class Interconnect(generator.Generator):
         return result
 
     def configure_placement(self, x: int, y: int, instr):
-        tile_id = self.__get_tile_id(x, y)
         tile = self.tile_circuits[(x, y)]
         core: ConfigurableCore = tile.core
         result = core.get_config_bitstream(instr)
-        # TODO(rsetaluri): Cache this information. Also, this should be
-        # refactored and abstracted.
         feature_addr = tile.features().index(core)
         for i in range(len(result)):
             reg_index, data = result[i]
-            addr = (reg_index << tile.feature_config_slice.start) | \
-                   (feature_addr << tile.tile_id_width)
-            addr = addr | tile_id
+            addr = self.get_config_addr(reg_index, feature_addr, x, y)
             result[i] = (addr, data)
         return result
 

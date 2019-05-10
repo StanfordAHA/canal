@@ -649,10 +649,7 @@ class TileCircuit(generator.Generator):
             raise NotImplementedError(type(dst_node))
         reg_index = self.__find_reg_index(circuit, dst_node)
         feature_addr = self.features().index(circuit)
-        # construct the addr and data
-        addr = (reg_index << self.feature_config_slice.start) | \
-               (feature_addr << self.tile_id_width)
-        return addr, config_data
+        return reg_index, feature_addr, config_data
 
     def __lift_ports(self):
         # lift the internal ports only if we have empty switch boxes
