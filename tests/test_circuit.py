@@ -303,7 +303,10 @@ def test_tile(num_tracks: int):
                                   fault.random.random_bv(bit_width)))
 
     # process the raw config data and change it into the actual config addr
-    for addr, config_value in raw_config_data:
+    for reg_addr, feat_addr, config_value in raw_config_data:
+        reg_addr = reg_addr << tile_circuit.feature_config_slice.start
+        feat_addr = feat_addr << tile_circuit.tile_id_width
+        addr = reg_addr | feat_addr
         addr = BitVector[data_width](addr) | BitVector[data_width](tile_id)
         config_data.append((addr, config_value))
 
