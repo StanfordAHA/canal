@@ -450,14 +450,16 @@ class Tile:
         if core is None:
             return
 
-        inputs = core.inputs()
+        inputs = core.inputs()[:]
+        inputs.sort(key=lambda x: x[1])
         for width, port_name in inputs:
             if width == self.track_width:
                 self.inputs.add(port_name)
                 # create node
                 self.ports[port_name] = PortNode(port_name, self.x,
                                                  self.y, width)
-        outputs = core.outputs()
+        outputs = core.outputs()[:]
+        outputs.sort(key=lambda x: x[1])
         for width, port_name in outputs:
             if width == self.track_width:
                 self.outputs.add(port_name)

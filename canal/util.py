@@ -131,7 +131,10 @@ def create_uniform_interconnect(width: int,
             interconnect.set_core(x, y, core_interface)
 
     # set port connections
-    for port_name, conns in port_connections.items():
+    port_names = list(port_connections.keys())
+    port_names.sort()
+    for port_name in port_names:
+        conns = port_connections[port_name]
         interconnect.set_core_connection_all(port_name, conns)
     # set the actual interconnections
     # sort the tracks by length
