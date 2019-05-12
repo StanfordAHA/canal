@@ -1,6 +1,8 @@
 """
 This is a layer build on top of Cyclone
 """
+from collections import OrderedDict
+
 from gemstone.common.core import Core
 from gemstone.common.mux_with_default import MuxWithDefaultWrapper
 from gemstone.common.zext_wrapper import ZextWrapper
@@ -700,8 +702,8 @@ class CoreInterface(InterconnectCore):
     def __init__(self, core: Core):
         super().__init__()
 
-        self.input_ports = {}
-        self.output_ports = {}
+        self.input_ports = OrderedDict()
+        self.output_ports = OrderedDict()
 
         self.core: Core = core
 
