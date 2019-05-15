@@ -120,7 +120,7 @@ def get_core_instance(instances):
     # find the core instances
     core_instance: coreir.module.Module = None
     for instance in instances:
-        if "Core" in instance.name:
+        if "Core" in instance.name and "SB" not in instance.name:
             assert core_instance is None, "Tile can only have one core"
             core_instance = instance
     return core_instance
