@@ -58,9 +58,10 @@ class CB(InterconnectConfigurable):
                  config_addr_width: int, config_data_width: int):
         if not isinstance(node, PortNode):
             raise ValueError(node, PortNode.__name__)
+        self.node: PortNode = node
+
         super().__init__(config_addr_width, config_data_width)
 
-        self.node: PortNode = node
         self.mux = create_mux(self.node)
 
         # lift the port to the top level
@@ -97,15 +98,17 @@ class CB(InterconnectConfigurable):
 
 class SB(InterconnectConfigurable):
     def __init__(self, switchbox: SwitchBox, config_addr_width: int,
-                 config_data_width: int):
-        super().__init__(config_addr_width, config_data_width)
+                 config_data_width: int, core_name: str = ""):
         self.switchbox = switchbox
+        self.__core_name = core_name
 
         self.sb_muxs: Dict[str, Tuple[SwitchBoxNode, MuxWrapper]] = {}
         self.reg_muxs: Dict[str, Tuple[RegisterMuxNode, MuxWrapper]] = {}
         self.regs: Dict[str, Tuple[RegisterNode, FromMagma]] = {}
 
         self.mux_name_to_node: Dict[str:, Node] = {}
+
+        super().__init__(config_addr_width, config_data_width)
 
         # first pass to create the mux and register circuit
         self.__create_reg()
@@ -235,10 +238,8 @@ class SB(InterconnectConfigurable):
         return result
 
     def name(self):
-        nodes = self.__get_connected_port_names()
-        node_str = "_".join([node for node in nodes])
         return f"SB_ID{self.switchbox.id}_{self.switchbox.num_track}TRACKS_" \
-            f"B{self.switchbox.width}_{node_str}"
+            f"B{self.switchbox.width}_{self.__core_name}"
 
     def __connect_sbs(self):
         # the principle is that it only connects to the nodes within
@@ -378,7 +379,8 @@ class TileCircuit(generator.Generator):
                     assert bit_width == port_node.width
 
             # switch box time
-            sb = SB(tile.switchbox, config_addr_width, config_data_width)
+            sb = SB(tile.switchbox, config_addr_width, config_data_width,
+                    self.core.name())
             self.sbs[sb.switchbox.width] = sb
 
         # lift all the sb ports up
