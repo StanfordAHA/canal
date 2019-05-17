@@ -184,9 +184,8 @@ class SB(InterconnectConfigurable):
         # ordering doesn't mater here
         for reg_name in self.regs:
             _hash ^= hash(reg_name)
-        # also hash the internal wires
-        for internal_wire in self.switchbox.internal_wires:
-            _hash ^= hash(internal_wire)
+        # also hash the internal wires based on switch box id
+        _hash ^= hash(switchbox.id)
         self.set_hash(_hash)
 
     def add_config_node(self, node: Node, name, width):
