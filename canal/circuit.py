@@ -120,11 +120,13 @@ class SB(InterconnectConfigurable):
             # only lift them if the ports are connect to the outside world
             port_name = create_name(sb_name)
             if sb.io == SwitchBoxIO.SB_IN:
-                self.add_port(port_name, magma.In(mux.ports.I.base_type()))
-                self.wire(self.ports[port_name], mux.ports.I)
+                self.add_port(port_name, magma.In(mux.ports.I.base_type()),
+                              skip_hash=True)
+                self.wire(self.ports[port_name], mux.ports.I, skip_hash=True)
 
             else:
-                self.add_port(port_name, magma.Out(mux.ports.O.base_type()))
+                self.add_port(port_name, magma.Out(mux.ports.O.base_type()),
+                              skip_hash=True)
 
                 # to see if we have a register mux here
                 # if so , we need to lift the reg_mux output instead
@@ -133,7 +135,7 @@ class SB(InterconnectConfigurable):
                     node, mux = self.reg_muxs[sb_name]
                     assert isinstance(node, RegisterMuxNode)
                     assert node in sb
-                self.wire(self.ports[port_name], mux.ports.O)
+                self.wire(self.ports[port_name], mux.ports.O, skip_hash=True)
 
         # connect internal sbs
         self.__connect_sbs()
@@ -165,7 +167,8 @@ class SB(InterconnectConfigurable):
                 assert mux.sel_bits > 0
                 self.add_config_node(sb, config_name, mux.sel_bits)
                 self.wire(self.registers[config_name].ports.O,
-                          mux.ports.S)
+                          mux.ports.S,
+                          skip_hash=True)
 
         for _, (reg_mux, mux) in self.reg_muxs.items():
             config_name = get_mux_sel_name(reg_mux)
@@ -173,7 +176,8 @@ class SB(InterconnectConfigurable):
             assert mux.sel_bits > 0
             self.add_config_node(reg_mux, config_name, mux.sel_bits)
             self.wire(self.registers[config_name].ports.O,
-                      mux.ports.S)
+                      mux.ports.S,
+                      skip_hash=True)
         self._setup_config()
 
         # name
@@ -265,7 +269,7 @@ class SB(InterconnectConfigurable):
                         node_, node_mux = self.sb_muxs[str(node)]
                         assert node_ == node
                         input_port = node_mux.ports.I[idx]
-                        self.wire(input_port, output_port)
+                        self.wire(input_port, output_port, skip_hash=True)
 
     def __connect_sb_out(self):
         for _, (sb, mux) in self.sb_muxs.items():
@@ -276,7 +280,7 @@ class SB(InterconnectConfigurable):
                         reg_node, reg = self.regs[reg_name]
                         assert len(reg_node.get_conn_in()) == 1
                         # wire 1
-                        self.wire(mux.ports.O, reg.ports.I)
+                        self.wire(mux.ports.O, reg.ports.I, skip_hash=True)
                     elif isinstance(node, RegisterMuxNode):
                         assert len(node.get_conn_in()) == 2
                         idx = node.get_conn_in().index(sb)
@@ -284,7 +288,8 @@ class SB(InterconnectConfigurable):
                         n, reg_mux = self.reg_muxs[sb_name]
                         assert n == node
                         # wire 2
-                        self.wire(mux.ports.O, reg_mux.ports.I[idx])
+                        self.wire(mux.ports.O, reg_mux.ports.I[idx],
+                                  skip_hash=True)
 
     def __connect_regs(self):
         for _, (node, reg) in self.regs.items():
@@ -304,7 +309,7 @@ class SB(InterconnectConfigurable):
             assert n == reg_mux_node
             idx = reg_mux_node.get_conn_in().index(node)
             # wire 3
-            self.wire(reg.ports.O, mux.ports.I[idx])
+            self.wire(reg.ports.O, mux.ports.I[idx], skip_hash=True)
 
 
 class TileCircuit(generator.Generator):
@@ -407,15 +412,17 @@ class TileCircuit(generator.Generator):
                 assert sb.y == self.y
                 port = switchbox.ports[sb_name]
                 if node.io == SwitchBoxIO.SB_IN:
-                    self.add_port(sb_name, magma.In(port.base_type()))
+                    self.add_port(sb_name, magma.In(port.base_type()),
+                                  skip_hash=True)
                     # FIXME:
                     #   it seems like I need this hack to by-pass coreIR's
                     #   checking, even though it's connected below
-                    self.wire(self.ports[sb_name], mux.ports.I)
+                    self.wire(self.ports[sb_name], mux.ports.I,
+                              skip_hash=True)
                 else:
                     self.add_port(sb_name, magma.Out(port.base_type()))
                 assert port.owner() == switchbox
-                self.wire(self.ports[sb_name], port)
+                self.wire(self.ports[sb_name], port, skip_hash=True)
 
         # connect ports from cb to switch box and back
         for _, cb in self.cbs.items():
@@ -431,10 +438,11 @@ class TileCircuit(generator.Generator):
                     # get the internal wire
                     n, sb_mux = sb_circuit.sb_muxs[str(node)]
                     assert n == node
-                    self.wire(sb_mux.ports.O, cb.ports.I[idx])
+                    self.wire(sb_mux.ports.O, cb.ports.I[idx], skip_hash=True)
                 else:
                     sb_name = create_name(str(node))
-                    self.wire(sb_circuit.ports[sb_name], cb.ports.I[idx])
+                    self.wire(sb_circuit.ports[sb_name], cb.ports.I[idx],
+                              skip_hash=True)
 
         # connect ports from core to switch box
         for bit_width, tile in self.tiles.items():
@@ -458,9 +466,11 @@ class TileCircuit(generator.Generator):
                             sb_circuit.add_port(port_name,
                                                 magma.In(magma.Bits[bit_width]))
                             self.wire(self.core.ports[port_name],
-                                      sb_circuit.ports[port_name])
+                                      sb_circuit.ports[port_name],
+                                      skip_hash=True)
                         sb_circuit.wire(sb_circuit.ports[port_name],
-                                        mux.ports.I[idx])
+                                        mux.ports.I[idx],
+                                        skip_hash=True)
 
         self.__add_tile_id()
         # add ports
