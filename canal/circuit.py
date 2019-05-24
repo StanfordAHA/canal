@@ -387,7 +387,10 @@ class TileCircuit(generator.Generator):
                     assert bit_width == port_node.width
 
             # switch box time
-            core_name = self.core.name() if self.core is not None else ""
+            if self.core is None:
+                core_name = "None"
+            else:
+                core_name = self.core.name()
             sb = SB(tile.switchbox, config_addr_width, config_data_width,
                     core_name)
             self.sbs[sb.switchbox.width] = sb
