@@ -45,6 +45,7 @@ def create_mux(node: Node):
     else:
         name = f"WIRE_{node_name}"
     mux = MuxWrapper(height, node.width, name=name)
+    return None
     return mux
 
 
