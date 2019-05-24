@@ -2,7 +2,6 @@
 This is a layer build on top of Cyclone
 """
 from collections import OrderedDict
-
 from gemstone.common.core import Core
 from gemstone.common.mux_with_default import MuxWithDefaultWrapper
 from gemstone.common.zext_wrapper import ZextWrapper
@@ -46,7 +45,6 @@ def create_mux(node: Node):
     else:
         name = f"WIRE_{node_name}"
     mux = MuxWrapper(height, node.width, name=name)
-    return None
     return mux
 
 
