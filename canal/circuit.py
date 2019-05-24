@@ -2,7 +2,6 @@
 This is a layer build on top of Cyclone
 """
 from collections import OrderedDict
-
 from gemstone.common.core import Core
 from gemstone.common.mux_with_default import MuxWithDefaultWrapper
 from gemstone.common.zext_wrapper import ZextWrapper
