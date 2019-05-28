@@ -110,6 +110,9 @@ class SB(InterconnectConfigurable):
 
         super().__init__(config_addr_width, config_data_width)
 
+        # turn off hashing because we control the hash by ourselves
+        self.set_skip_hash(True)
+
         # first pass to create the mux and register circuit
         self.__create_reg()
         self.__create_sb_mux()
@@ -187,6 +190,7 @@ class SB(InterconnectConfigurable):
         # also hash the internal wires based on switch box id
         _hash ^= hash(switchbox.id)
         self.set_hash(_hash)
+        self.set_skip_hash(False)
 
     def add_config_node(self, node: Node, name, width):
         super().add_config(name, width)
@@ -320,6 +324,9 @@ class TileCircuit(generator.Generator):
                  full_config_addr_width: int = 32,
                  stall_signal_width: int = 4):
         super().__init__()
+
+        # turn off hashing because we controls that hashing here
+        self.set_skip_hash(True)
 
         self.tiles = tiles
         self.config_addr_width = config_addr_width
@@ -497,6 +504,14 @@ class TileCircuit(generator.Generator):
         self.read_data_mux: MuxWithDefaultWrapper = None
 
         self.finalized = False
+
+        hash_value = hash(self.name())
+        for sb in self.sbs.values():
+            hash_value ^= hash(sb)
+        for cb in self.cbs.values():
+            hash_value ^= hash(cb)
+        self.set_hash(hash_value)
+        self.set_skip_hash(False)
 
     def __add_tile_id(self):
         self.add_port("tile_id",
