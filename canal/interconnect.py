@@ -373,8 +373,15 @@ class Interconnect(generator.Generator):
         result = core.get_config_bitstream(instr)
         feature_addr = tile.features().index(core)
         for i in range(len(result)):
-            reg_index, data = result[i]
-            addr = self.get_config_addr(reg_index, feature_addr, x, y)
+            entry = result[i]
+            if len(entry) == 2:
+                reg_index, data = result[i]
+                addr = self.get_config_addr(reg_index, feature_addr, x, y)
+            else:
+                assert len(entry) == 3
+                reg_index, idx_offset, data = result[i]
+                addr = self.get_config_addr(reg_index,
+                                            feature_addr + idx_offset, x, y)
             result[i] = (addr, data)
         return result
 
