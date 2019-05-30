@@ -633,11 +633,7 @@ class TileCircuit(generator.Generator):
                 self.wire(feat_and_config_en_tile[i].ports.O,
                           feat.ports.config.write[0])
             if "config_en" in feat.ports:
-                feat_read_en = FromMagma(mantle.DefineAnd(2))
-                feat_read_en.instance_name = f"config_read_feat_en_{i}"
-                self.wire(read_and_tile.ports.O, feat_read_en.ports.I0)
-                self.wire(feat_and_config_en_tile[i].ports.O, feat_read_en.ports.I1)
-                self.wire(feat_read_en.ports.O, feature.ports.config.config_en)
+                self.wire(decode_feat[i].ports.O, feat.ports["config_en"])
 
     def add_feature(self, feature: generator.Generator):
         assert isinstance(feature, generator.Generator)
