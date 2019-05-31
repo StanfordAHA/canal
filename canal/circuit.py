@@ -648,8 +648,7 @@ class TileCircuit(generator.Generator):
                 self.wire(feat_and_config_en_tile[i].ports.O,
                           feat.ports.config.write[0])
             if "config_en" in feat.ports:
-                self.wire(feat.ports.config_en,
-                          feat_and_config_en_tile[i].ports.O)
+                self.wire(decode_feat[i].ports.O, feat.ports["config_en"])
 
     def add_feature(self, feature: generator.Generator):
         assert isinstance(feature, generator.Generator)
