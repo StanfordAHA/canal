@@ -34,7 +34,21 @@ class PowerDomainFixer:
         nop_tiles = self.__get_nop_tiles(target_sb)
         routes = self.__get_new_routing(target_sb)
         instr = self.__get_nop_core_instr(nop_tiles)
+        instr += self.__turn_off_tiles(always_on)
         return instr, routes
+
+    def __turn_off_tiles(self, always_off_tiles):
+        instr = []
+        for loc in always_off_tiles:
+            tile_circuit = self._interconnect.tile_circuits[loc]
+            features = tile_circuit.features()
+            for feat_addr, feat in enumerate(features):
+                if "PowerDomainConfig" in feat.name():
+                    addr, data = feat.configure(True)
+                    addr = self._interconnect.get_config_addr(addr, feat_index, data)
+                    instr.append(addr)
+                    break
+        return instr
 
     def __get_nop_core_instr(self,
                              nop_tiles: Dict[int, OrderedSet[Tuple[int, int]]]):
