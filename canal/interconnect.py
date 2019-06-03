@@ -154,17 +154,17 @@ class Interconnect(generator.Generator):
     def interface(self):
         return self.__interface
 
-    def __get_tile_id(self, x: int, y: int):
+    def get_tile_id(self, x: int, y: int):
         return x << (self.tile_id_width // 2) | y
 
     def __set_tile_id(self):
         for (x, y), tile in self.tile_circuits.items():
-            tile_id = self.__get_tile_id(x, y)
+            tile_id = self.get_tile_id(x, y)
             self.wire(tile.ports.tile_id,
                       Const(magma.bits(tile_id, self.tile_id_width)))
 
     def get_config_addr(self, reg_addr: int, feat_addr: int, x: int, y: int):
-        tile_id = self.__get_tile_id(x, y)
+        tile_id = self.get_tile_id(x, y)
         tile = self.tile_circuits[(x, y)]
         addr = (reg_addr << tile.feature_config_slice.start) | \
                (feat_addr << tile.tile_id_width)
