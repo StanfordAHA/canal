@@ -98,9 +98,11 @@ class CB(InterconnectConfigurable):
 
 class SB(InterconnectConfigurable):
     def __init__(self, switchbox: SwitchBox, config_addr_width: int,
-                 config_data_width: int, core_name: str = ""):
+                 config_data_width: int, core_name: str = "",
+                 stall_signal_width: int = 4):
         self.switchbox = switchbox
         self.__core_name = core_name
+        self.stall_signal_width = stall_signal_width
 
         self.sb_muxs: Dict[str, Tuple[SwitchBoxNode, MuxWrapper]] = {}
         self.reg_muxs: Dict[str, Tuple[RegisterMuxNode, MuxWrapper]] = {}
@@ -229,10 +231,21 @@ class SB(InterconnectConfigurable):
 
     def __create_reg(self):
         for reg_name, reg_node in self.switchbox.registers.items():
-            reg_cls = DefineRegister(reg_node.width)
+            reg_cls = DefineRegister(reg_node.width, has_ce=True)
             reg = FromMagma(reg_cls)
             reg.instance_name = create_name(str(reg_node))
             self.regs[reg_name] = reg_node, reg
+        # add stall ports
+        if len(self.regs) > 0:
+            self.add_port("stall",
+                          magma.In(magma.Bits[self.stall_signal_width]))
+            # fanout the stall signals to registers
+            # invert the stall signal to clk_en
+            invert = FromMagma(mantle.DefineInvert(1))
+            # FIXME: use the low bits of stall signal to stall
+            self.wire(invert.ports.I[0], self.ports.stall[0])
+            for (_, reg) in self.regs.values():
+                self.wire(reg.ports.CE, invert.ports.O[0])
 
     def __get_connected_port_names(self) -> List[str]:
         # this is to uniquify the SB given different port connections
@@ -397,7 +410,7 @@ class TileCircuit(generator.Generator):
             # switch box time
             core_name = self.core.name() if self.core is not None else ""
             sb = SB(tile.switchbox, config_addr_width, config_data_width,
-                    core_name)
+                    core_name, stall_signal_width=stall_signal_width)
             self.sbs[sb.switchbox.width] = sb
 
         # lift all the sb ports up
