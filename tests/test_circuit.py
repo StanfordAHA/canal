@@ -183,6 +183,116 @@ def test_sb(num_tracks: int, bit_width: int, sb_ctor,
                                flags=["-Wno-fatal"])
 
 
+@pytest.mark.parametrize("sb_ctor", [DisjointSwitchBox,
+                                     WiltonSwitchBox,
+                                     ImranSwitchBox])
+def test_stall(sb_ctor):
+    """It only tests whether the circuit created matched with the graph
+       representation.
+    """
+    addr_width = 8
+    data_width = 32
+    num_tracks = 2
+    bit_width = 1
+
+    switchbox = sb_ctor(0, 0, num_tracks, bit_width)
+    # insert registers to every sides and tracks
+
+    for side in SwitchBoxSide:
+        for track in range(num_tracks):
+            switchbox.add_pipeline_register(side, track)
+
+    sb_circuit = SB(switchbox, addr_width, data_width, stall_signal_width=1)
+    circuit = sb_circuit.circuit()
+
+    # test the sb routing as well
+    tester = BasicTester(circuit,
+                         circuit.clk,
+                         circuit.reset)
+
+    # generate the addr based on mux names, which is used to sort the addr
+    config_names = list(sb_circuit.registers.keys())
+    config_names.sort()
+
+    # some of the sb nodes may turn into a pass-through wire. we still
+    # need to test them.
+    # we generate a pair of config data and expected values. if it's a
+    # pass-through wire, we don't configure them, yet we still evaluate the
+    # outcome to see if it's connected
+    config_data = []
+    test_data = []
+    all_sbs = switchbox.get_all_sbs()
+    for sb in all_sbs:
+        mux_sel_name = get_mux_sel_name(sb)
+        if mux_sel_name not in config_names:
+            assert sb.io == SwitchBoxIO.SB_IN
+            connected_sbs = sb.get_conn_in()
+            # for a switch box where each SB_IN connects to 3 different
+            # SN_OUT, the SB_IN won't have any incoming edges
+            assert len(connected_sbs) == 0
+            input_sb_name = create_name(str(sb))
+            # as a result, we configure the fan-out sbs to see if they
+            # can receive the signal. notice that this is overlapped with the
+            # if statement above
+            # we also wanted to test if the register mode can be turned on
+            for connected_sb in sb:  # type: SwitchBoxNode
+                entry = []
+                mux_sel_name = get_mux_sel_name(connected_sb)
+                assert mux_sel_name in config_names
+                assert connected_sb.io == SwitchBoxIO.SB_OUT
+                addr = config_names.index(mux_sel_name)
+                index = connected_sb.get_conn_in().index(sb)
+                entry.append((addr, index))
+                # we will also configure the register, if connected
+                reg_node, reg_mux_node = find_reg_mux_node(connected_sb)
+                assert reg_mux_node is not None
+                mux_sel_name = get_mux_sel_name(reg_mux_node)
+                assert mux_sel_name in config_names
+                addr = config_names.index(mux_sel_name)
+                index = reg_mux_node.get_conn_in().index(reg_node)
+                entry.append((addr, index))
+                config_data.append(entry)
+                # get port
+                output_sb_name = create_name(str(connected_sb))
+                entry = []
+                for _ in range(4):
+                    entry.append((circuit.interface.ports[input_sb_name],
+                                  circuit.interface.ports[output_sb_name],
+                                  fault.random.random_bv(bit_width)))
+                test_data.append(entry)
+
+    tester.poke(circuit.interface["stall"], 1)
+    # poke and test, without registers configured
+    assert len(config_data) == len(test_data)
+    for i in range(len(config_data)):
+        tester.reset()
+        configs = config_data[i]
+        data = test_data[i]
+        for addr, index in configs:
+            index = BitVector[data_width](index)
+            tester.configure(BitVector[addr_width](addr), index)
+            tester.configure(BitVector[addr_width](addr), index + 1, False)
+            tester.config_read(BitVector[addr_width](addr))
+            tester.eval()
+            tester.expect(circuit.read_config_data, index)
+
+        assert len(data) > 1
+        for j in range(len(data)):
+            if j != 0:
+                tester.eval()
+                tester.expect(data[j - 1][1], 0)
+
+            input_port, _, value = data[j]
+            tester.poke(input_port, value)
+            tester.step(2)
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        tester.compile_and_run(target="verilator",
+                               magma_output="coreir-verilog",
+                               directory=tempdir,
+                               flags=["-Wno-fatal"])
+
+
 # 5 is too slow
 @pytest.mark.parametrize('num_tracks', [2, 4])
 def test_tile(num_tracks: int):
