@@ -181,6 +181,9 @@ class SB(InterconnectConfigurable):
                       mux.ports.S)
         self._setup_config()
 
+        # clock gate the pipeline registers if not used
+        self.__wire_config_ce()
+
         # name
         self.instance_name = self.name()
 
@@ -239,13 +242,28 @@ class SB(InterconnectConfigurable):
         if len(self.regs) > 0:
             self.add_port("stall",
                           magma.In(magma.Bits[self.stall_signal_width]))
-            # fanout the stall signals to registers
-            # invert the stall signal to clk_en
-            invert = FromMagma(mantle.DefineInvert(1))
-            # FIXME: use the low bits of stall signal to stall
-            self.wire(invert.ports.I[0], self.ports.stall[0])
-            for (_, reg) in self.regs.values():
-                self.wire(reg.ports.CE, invert.ports.O[0])
+
+    def __wire_config_ce(self):
+        if len(self.regs) == 0:
+            return
+        # fanout the stall signals to registers
+        # invert the stall signal to clk_en
+        invert = FromMagma(mantle.DefineInvert(1))
+        # FIXME: use the low bits of stall signal to stall
+        self.wire(invert.ports.I[0], self.ports.stall[0])
+        for (reg_node, reg) in self.regs.values():
+            rmux: RegisterMuxNode = list(reg_node)[0]
+            # get rmux address
+            config_name = get_mux_sel_name(rmux)
+            config_reg = self.registers[config_name]
+            index_val = rmux.get_conn_in().index(reg_node)
+            eq_gate = FromMagma(mantle.DefineEQ(config_reg.width))
+            self.wire(eq_gate.ports.I0, Const(index_val))
+            self.wire(eq_gate.ports.I1, config_reg.ports.O)
+            and_gate = FromMagma(mantle.DefineAnd(2, 1))
+            self.wire(and_gate.ports.I0[0], eq_gate.ports.O)
+            self.wire(and_gate.ports.I1, invert.ports.O)
+            self.wire(reg.ports.CE, and_gate.ports.O[0])
 
     def __get_connected_port_names(self) -> List[str]:
         # this is to uniquify the SB given different port connections
