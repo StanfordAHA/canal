@@ -8,6 +8,8 @@ install:
     - docker cp ../canal canal:/
     - docker exec -i canal bash -c "pip install -r /canal/requirements.txt"
     - docker exec -i canal bash -c "pip install pytest python-coveralls"
+    - docker exec -i canal bash -c "pip uninstall -y coreir"
+    - docker exec -i canal bash -c "pip install pycoreir"
     - docker exec -i canal bash -c "pip install pytest-cov pytest-codestyle"
 
 script:
