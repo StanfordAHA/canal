@@ -1,5 +1,4 @@
 from canal.interconnect import Interconnect
-from canal.cyclone import SwitchBoxIO, SwitchBoxSide
 
 
 def __parse_raw_routing_result(filename):
