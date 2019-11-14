@@ -173,7 +173,7 @@ def test_sb(num_tracks: int, bit_width: int, sb_ctor,
                     tester.expect(data[j - 1][1], data[j - 1][2])
 
                 input_port, _, value = data[j]
-                tester.poke(input_port, value)
+                tester.poke(input_port[0], value)
                 tester.step(2)
 
     with tempfile.TemporaryDirectory() as tempdir:
