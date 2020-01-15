@@ -106,7 +106,7 @@ def apply_global_meso_wiring(interconnect: Interconnect,  io_sides: IOSide):
 
         # Connect 0 to first tile's read_data input
         interconnect.wire(ports_in[0],
-                          Const(magma.bits(0, interconnect.config_data_width)))
+                          Const(magma.bits[interconnect.config_data_width](0)))
 
         # connect each tile's read_data output to next tile's
         # read_data input
