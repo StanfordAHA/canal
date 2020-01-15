@@ -776,9 +776,9 @@ class CoreInterface(InterconnectCore):
     def __get_bit_width(port):
         # nasty function to get the actual bit width from the port reference
         t = port.type()
-        if isinstance(t, magma.BitKind):
+        if issubclass(t, magma.Digital):
             return 1
-        if isinstance(port.type(), magma.BitsKind):
+        if issubclass(port.type(), magma.Bits):
             return len(t)
         raise NotImplementedError(t, type(t))
 
