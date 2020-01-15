@@ -5,6 +5,6 @@ export PYTEST_ADDOPTS="--color=yes"
 
 cd /canal/
 
-pytest --codestyle  \
+pytest --pycodestyle  \
        --cov canal  \
        -v --cov-report term-missing tests

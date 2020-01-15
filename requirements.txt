@@ -1,1 +1,1 @@
--e git://github.com/StanfordAHA/gemstone.git#egg=gemstone
+-e git://github.com/StanfordAHA/gemstone.git@magma2#egg=gemstone

@@ -161,7 +161,7 @@ class Interconnect(generator.Generator):
         for (x, y), tile in self.tile_circuits.items():
             tile_id = self.get_tile_id(x, y)
             self.wire(tile.ports.tile_id,
-                      Const(magma.bits(tile_id, self.tile_id_width)))
+                      Const(magma.Bits[self.tile_id_width](tile_id)))
 
     def get_config_addr(self, reg_addr: int, feat_addr: int, x: int, y: int):
         tile_id = self.get_tile_id(x, y)
@@ -273,7 +273,7 @@ class Interconnect(generator.Generator):
         # this is a pass to ground every sb ports that's not connected
         for coord, tile_dict in self.__tiles.items():
             for bit_width, tile in tile_dict.items():
-                ground = Const(magma.bits(0, bit_width))
+                ground = Const(magma.Bits[bit_width](0))
                 for sb in tile.switchbox.get_all_sbs():
                     if sb.io != SwitchBoxIO.SB_IN:
                         continue
