@@ -405,6 +405,13 @@ class ImranSwitchBox(SwitchBox):
         super().__init__(x, y, num_track, width, internal_wires)
 
 
+class CoreConnectionType(enum.IntFlag):
+    CB = 1 << 0
+    SB = 1 << 1
+    Core = 1 << 2
+    Default = CB | SB
+
+
 class Tile:
 
     def __init__(self, x: int, y: int,
@@ -429,6 +436,9 @@ class Tile:
 
         # hold for the core
         self.core: InterconnectCore = None
+        self.additional_cores: List[Tuple[InterconnectCore,
+                                          CoreConnectionType]] = []
+        self.__port_core: Dict[str, InterconnectCore] = {}
 
     def __eq__(self, other):
         if not isinstance(other, Tile):
@@ -450,22 +460,62 @@ class Tile:
         if core is None:
             return
 
-        inputs = core.inputs()[:]
-        inputs.sort(key=lambda x: x[1])
-        for width, port_name in inputs:
-            if width == self.track_width:
-                self.inputs.add(port_name)
-                # create node
-                self.ports[port_name] = PortNode(port_name, self.x,
-                                                 self.y, width)
-        outputs = core.outputs()[:]
-        outputs.sort(key=lambda x: x[1])
-        for width, port_name in outputs:
-            if width == self.track_width:
-                self.outputs.add(port_name)
-                # create node
-                self.ports[port_name] = PortNode(port_name, self.x,
-                                                 self.y, width)
+        self.__add_core(core)
+
+    def __add_core(self, core: InterconnectCore,
+                   connection_type: CoreConnectionType =
+                   CoreConnectionType.Default):
+        if connection_type & CoreConnectionType.CB == CoreConnectionType.CB:
+            inputs = core.inputs()[:]
+            inputs.sort(key=lambda x: x[1])
+            for width, port_name in inputs:
+                if width == self.track_width:
+                    self.inputs.add(port_name)
+                    # create node
+                    self.ports[port_name] = PortNode(port_name, self.x,
+                                                     self.y, width)
+                    self.__port_core[port_name] = core
+
+        if connection_type & CoreConnectionType.SB == CoreConnectionType.SB:
+            outputs = core.outputs()[:]
+            outputs.sort(key=lambda x: x[1])
+            for width, port_name in outputs:
+                if width == self.track_width:
+                    self.outputs.add(port_name)
+                    # create node
+                    self.ports[port_name] = PortNode(port_name, self.x,
+                                                     self.y, width)
+                    self.__port_core[port_name] = core
+
+    def add_additional_core(self, core: InterconnectCore,
+                            connection_type: CoreConnectionType):
+        assert self.core is not None, "Main core cannot be null"
+        self.additional_cores.append((core, connection_type))
+        self.__add_core(core, connection_type)
+        # handle the extra cases
+        if connection_type & CoreConnectionType.Core:
+            # connect the output ports to the CB input
+            # we directly add the graph connection here
+            core_cbs: List[PortNode] = []
+            for width, port_name in self.core.inputs():
+                if width == self.track_width:
+                    assert port_name in self.ports
+                    core_cbs.append(self.ports[port_name])
+
+            outputs = core.outputs()[:]
+            outputs.sort(key=lambda x: x[1])
+            for width, port_name in outputs:
+                assert port_name not in self.ports
+                if width == self.track_width:
+                    for cb_node in core_cbs:
+                        self.ports[port_name] = PortNode(port_name, self.x,
+                                                         self.y, width)
+                        self.ports[port_name].add_edge(cb_node)
+                self.__port_core[port_name] = core
+
+    def get_port_ref(self, port_name):
+        assert port_name in self.__port_core
+        return self.__port_core[port_name].get_port_ref(port_name)
 
     def core_has_input(self, port: str):
         return port in self.inputs
@@ -521,6 +571,8 @@ class Tile:
         tile.switchbox = switchbox
         # we don't clone the cores
         tile.set_core(self.core)
+        for core, conn in self.additional_cores:
+            tile.add_additional_core(core, conn)
         return tile
 
 

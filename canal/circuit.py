@@ -428,7 +428,6 @@ class TileCircuit(generator.Generator):
         # we only create cb if it's an input port, which doesn't have
         # graph neighbors
         for bit_width, tile in self.tiles.items():
-            core = tile.core
             # connection box time
             for port_name, port_node in tile.ports.items():
                 # input ports
@@ -438,7 +437,7 @@ class TileCircuit(generator.Generator):
                     if len(port_node.get_conn_in()) == 0:
                         continue
                     # create a CB
-                    port_ref = core.get_port_ref(port_node.name)
+                    port_ref = tile.get_port_ref(port_node.name)
                     cb = CB(port_node, config_addr_width, config_data_width)
                     self.wire(cb.ports.O, port_ref)
                     self.cbs[port_name] = cb
