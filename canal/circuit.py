@@ -402,6 +402,8 @@ class TileCircuit(generator.Generator):
         x = -1
         y = -1
         core = None
+        self.additional_cores = []
+        additional_core_names = set()
         for bit_width, tile in self.tiles.items():
             assert bit_width == tile.track_width
             if x == -1:
@@ -415,6 +417,13 @@ class TileCircuit(generator.Generator):
                 # have to have the same core, otherwise it's physically
                 # impossible
                 assert core == tile.core
+            for a_core, _ in tile.additional_cores:
+                a_core = a_core.core
+                assert isinstance(a_core, Core)
+                core_name = a_core.name()
+                if core_name not in additional_core_names:
+                    self.additional_cores.append(a_core)
+                    additional_core_names.add(core_name)
 
         assert x != -1 and y != -1
         self.x = x
@@ -479,20 +488,27 @@ class TileCircuit(generator.Generator):
         for _, cb in self.cbs.items():
             conn_ins = cb.node.get_conn_in()
             for idx, node in enumerate(conn_ins):
-                assert isinstance(node, (SwitchBoxNode, RegisterMuxNode))
+                assert isinstance(node, (SwitchBoxNode, RegisterMuxNode, PortNode))
                 # for IO tiles they have connections to other tiles
                 if node.x != self.x or node.y != self.y:
                     continue
                 bit_width = node.width
                 sb_circuit = self.sbs[bit_width]
-                if node.io == SwitchBoxIO.SB_IN:
-                    # get the internal wire
-                    n, sb_mux = sb_circuit.sb_muxs[str(node)]
-                    assert n == node
-                    self.wire(sb_mux.ports.O, cb.ports.I[idx])
+                if not isinstance(node, PortNode):
+                    if node.io == SwitchBoxIO.SB_IN:
+                        # get the internal wire
+                        n, sb_mux = sb_circuit.sb_muxs[str(node)]
+                        assert n == node
+                        self.wire(sb_mux.ports.O, cb.ports.I[idx])
+                    else:
+                        sb_name = create_name(str(node))
+                        self.wire(sb_circuit.ports[sb_name], cb.ports.I[idx])
                 else:
-                    sb_name = create_name(str(node))
-                    self.wire(sb_circuit.ports[sb_name], cb.ports.I[idx])
+                    # this is an additional core port
+                    # just connect directly
+                    width = node.width
+                    tile = self.tiles[width]
+                    self.wire(tile.get_port_ref(node.name), cb.ports.I[idx])
 
         # connect ports from core to switch box
         for bit_width, tile in self.tiles.items():
@@ -501,7 +517,9 @@ class TileCircuit(generator.Generator):
                     assert len(port_node.get_conn_in()) == 0
                     port_name = port_node.name
                     for sb_node in port_node:
-                        assert isinstance(sb_node, SwitchBoxNode)
+                        assert isinstance(sb_node, (SwitchBoxNode, PortNode))
+                        if isinstance(sb_node, PortNode):
+                            continue
                         # for IO tiles they have connections to other tiles
                         if sb_node.x != self.x or sb_node.y != self.y:
                             continue
@@ -541,6 +559,12 @@ class TileCircuit(generator.Generator):
             assert isinstance(self.core, Core)
             for feature in self.core.features():
                 self.add_feature(feature)
+
+        for c in self.additional_cores:
+            assert isinstance(c, Core)
+            for feature in c.features():
+                self.add_feature(feature)
+
         # then CBs
         cb_names = list(self.cbs.keys())
         cb_names.sort()
