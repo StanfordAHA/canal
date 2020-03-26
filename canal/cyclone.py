@@ -405,7 +405,7 @@ class ImranSwitchBox(SwitchBox):
         super().__init__(x, y, num_track, width, internal_wires)
 
 
-class CoreConnectionType(enum.IntFlag):
+class CoreConnectionType(enum.Flag):
     CB = 1 << 0
     SB = 1 << 1
     Core = 1 << 2
@@ -436,8 +436,7 @@ class Tile:
 
         # hold for the core
         self.core: InterconnectCore = None
-        self.additional_cores: List[Tuple[InterconnectCore,
-                                          CoreConnectionType]] = []
+        self.additional_cores = []
         self.__port_core: Dict[str, InterconnectCore] = {}
 
     def __eq__(self, other):
@@ -493,7 +492,7 @@ class Tile:
         self.additional_cores.append((core, connection_type))
         self.__add_core(core, connection_type)
         # handle the extra cases
-        if connection_type & CoreConnectionType.Core:
+        if connection_type & CoreConnectionType.Core == CoreConnectionType.Core:
             # connect the output ports to the CB input
             # we directly add the graph connection here
             core_cbs: List[PortNode] = []
@@ -511,7 +510,7 @@ class Tile:
                         self.ports[port_name] = PortNode(port_name, self.x,
                                                          self.y, width)
                         self.ports[port_name].add_edge(cb_node)
-                self.__port_core[port_name] = core
+                    self.__port_core[port_name] = core
 
     def get_port_ref(self, port_name):
         assert port_name in self.__port_core

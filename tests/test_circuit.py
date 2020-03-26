@@ -1,3 +1,4 @@
+from gemstone.common.core import ConfigurableCore
 from hwtypes import BitVector
 from gemstone.common.dummy_core_magma import DummyCore
 from gemstone.common.testers import BasicTester
@@ -293,9 +294,46 @@ def test_stall(sb_ctor):
                                flags=["-Wno-fatal"])
 
 
+class AdditionalDummyCore(ConfigurableCore):
+    def __init__(self):
+        super().__init__(8, 32)
+
+        self.add_ports(
+            data_in_16b_extra=magma.In(magma.Bits[16]),
+            data_out_16b_extra=magma.Out(magma.Bits[16]),
+            data_in_1b_extra=magma.In(magma.Bits[1]),
+            data_out_1b_extra=magma.Out(magma.Bits[1]),
+        )
+
+        self.remove_port("read_config_data")
+
+        # Dummy core just passes inputs through to outputs
+        self.wire(self.ports.data_in_16b_extra, self.ports.data_out_16b_extra)
+        self.wire(self.ports.data_in_1b_extra, self.ports.data_out_1b_extra)
+
+    def get_config_bitstream(self, instr):
+        raise NotImplementedError()
+
+    def instruction_type(self):
+        raise NotImplementedError()
+
+    def inputs(self):
+        return [self.ports.data_in_1b_extra, self.ports.data_in_16b_extra]
+
+    def outputs(self):
+        return [self.ports.data_out_1b_extra, self.ports.data_out_16b_extra]
+
+    def eval_model(self, **kargs):
+        pass
+
+    def name(self):
+        return "DummyCore2"
+
+
 # 5 is too slow
 @pytest.mark.parametrize('num_tracks', [2, 4])
-def test_tile(num_tracks: int):
+@pytest.mark.parametrize("add_additional_core", [True, False])
+def test_tile(num_tracks: int, add_additional_core: bool):
     addr_width = 8
     data_width = 32
     bit_widths = [1, 16]
@@ -306,6 +344,12 @@ def test_tile(num_tracks: int):
 
     dummy_core = DummyCore()
     core = CoreInterface(dummy_core)
+
+    if add_additional_core:
+        c = AdditionalDummyCore()
+        additional_core = CoreInterface(c)
+    else:
+        additional_core = None
 
     tiles: Dict[int, Tile] = {}
 
@@ -328,18 +372,21 @@ def test_tile(num_tracks: int):
         for side in SwitchBoxSide:
             output_connections.append(SBConnectionType(side, track,
                                                        SwitchBoxIO.SB_OUT))
-    input_names: List[Tuple[str, int]] = []
-    output_names: List[Tuple[str, int]] = []
+
     for bit_width, tile in tiles.items():
         tile.set_core(core)
+        if add_additional_core is not None:
+            tile.add_additional_core(additional_core, CoreConnectionType.Core | CoreConnectionType.CB)
+
         input_port_name = f"data_in_{bit_width}b"
+        input_port_name_extra = f"data_in_{bit_width}b_extra"
         output_port_name = f"data_out_{bit_width}b"
 
         tile.set_core_connection(input_port_name, input_connections)
         tile.set_core_connection(output_port_name, output_connections)
 
-        input_names.append((input_port_name, bit_width))
-        output_names.append((output_port_name, bit_width))
+        if add_additional_core is not None:
+            tile.set_core_connection(input_port_name_extra, input_connections)
 
     tile_circuit = TileCircuit(tiles, addr_width, data_width,
                                tile_id_width=tile_id_width)
@@ -453,3 +500,7 @@ def test_tile(num_tracks: int):
                                magma_output="coreir-verilog",
                                directory=tempdir,
                                flags=["-Wno-fatal"])
+
+
+if __name__ == "__main__":
+    test_tile(2, True)
