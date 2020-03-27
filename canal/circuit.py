@@ -13,8 +13,8 @@ import mantle
 from gemstone.common.mux_wrapper import MuxWrapper
 from gemstone.generator.generator import Generator
 import magma
-from typing import Dict, Tuple, List
-from abc import abstractmethod
+from typing import Dict, Tuple, List, Union
+import gemstone
 import gemstone.generator.generator as generator
 from gemstone.generator.from_magma import FromMagma
 from mantle import DefineRegister
@@ -635,6 +635,22 @@ class TileCircuit(generator.Generator):
                 # to reset, but not necessarily has config port
                 assert "reset" not in feature.ports
         return False
+
+    def wire_internal(self, port1: str, port2: str):
+        # wire internal ports directly, for the cores
+        # just silently quit if the port doesn't exist
+        assert port1 != port2
+        port1_ref = None
+        port2_ref = None
+        cores = [self.core] + self.additional_cores
+        for core in cores:
+            for port_name, port in core.ports().items():
+                if port1_ref is not None and port_name == port1:
+                    port1_ref = port
+                if port2_ref is not None and port_name == port2:
+                    port2_ref = port
+        assert port1_ref.owner() != port2_ref.owner()
+        self.wire(port1_ref, port2_ref)
 
     def finalize(self):
         if self.finalized:
