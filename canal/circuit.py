@@ -50,7 +50,7 @@ class _PassThroughFromMux(Generator):
         return self._name
 
 
-def _flatten_mux(mux):
+def flatten_mux(mux):
     if mux.height != 1:
         return mux
     return _PassThroughFromMux(mux)
@@ -68,7 +68,7 @@ def create_mux(node: Node):
     else:
         name = f"WIRE_{node_name}"
     mux = MuxWrapper(height, node.width, name=name)
-    return _flatten_mux(mux)
+    return flatten_mux(mux)
 
 
 class InterconnectConfigurable(Configurable):
