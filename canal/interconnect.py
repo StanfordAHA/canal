@@ -122,10 +122,15 @@ class Interconnect(generator.Generator):
                         # using the tile-level port is fine
                         dst_tile = self.tile_circuits[(sb_node.x, sb_node.y)]
                         # wire them up
-                        idx = sb_node.get_conn_in().index(src_node)
                         dst_sb_name = create_name(str(sb_node))
-                        self.wire(tile.ports[src_sb_name],
-                                  dst_tile.ports[dst_sb_name])
+                        if len(sb_node.get_conn_in()) == 1:
+                            # no array
+                            self.wire(tile.ports[src_sb_name],
+                                      dst_tile.ports[dst_sb_name])
+                        else:
+                            idx = sb_node.get_conn_in().index(src_node)
+                            self.wire(tile.ports[src_sb_name][idx],
+                                      dst_tile.ports[dst_sb_name])
 
         # connect these margin tiles, if needed
         self.__connect_margin_tiles()
