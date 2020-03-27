@@ -375,8 +375,9 @@ def test_tile(num_tracks: int, add_additional_core: bool):
 
     for bit_width, tile in tiles.items():
         tile.set_core(core)
-        if add_additional_core is not None:
-            tile.add_additional_core(additional_core, CoreConnectionType.Core | CoreConnectionType.CB)
+        if add_additional_core:
+            connection_type = CoreConnectionType.Core | CoreConnectionType.CB
+            tile.add_additional_core(additional_core, connection_type)
 
         input_port_name = f"data_in_{bit_width}b"
         input_port_name_extra = f"data_in_{bit_width}b_extra"
@@ -385,7 +386,7 @@ def test_tile(num_tracks: int, add_additional_core: bool):
         tile.set_core_connection(input_port_name, input_connections)
         tile.set_core_connection(output_port_name, output_connections)
 
-        if add_additional_core is not None:
+        if add_additional_core:
             tile.set_core_connection(input_port_name_extra, input_connections)
 
     tile_circuit = TileCircuit(tiles, addr_width, data_width,
@@ -423,7 +424,10 @@ def test_tile(num_tracks: int, add_additional_core: bool):
         assert sb_circuit is not None
 
         # input
-        input_port_name = f"data_in_{bit_width}b"
+        if add_additional_core:
+            input_port_name = f"data_in_{bit_width}b_extra"
+        else:
+            input_port_name = f"data_in_{bit_width}b"
         in_port_node = tile_circuit.tiles[bit_width].ports[input_port_name]
         # find that connection box
         cb_circuit: CB = None
@@ -453,11 +457,25 @@ def test_tile(num_tracks: int, add_additional_core: bool):
 
                 raw_config_data.append(data1)
 
+                # configure the cb to route data from additional core to the
+                # main core
+                if add_additional_core:
+                    input_port_name = f"data_in_{bit_width}b"
+                    output_port_name = f"data_out_{bit_width}b_extra"
+                    additional_in_port_node = \
+                        tile_circuit.tiles[bit_width].ports[input_port_name]
+                    additional_out_port_node = \
+                        tile_circuit.tiles[bit_width].ports[output_port_name]
+                    data2 = tile_circuit.get_route_bitstream_config(
+                        additional_out_port_node, additional_in_port_node)
+                    raw_config_data.append(data2)
+
                 in_sb_name = create_name(str(in_sb_node))
                 out_sb_name = create_name(str(out_sb_node))
                 test_data.append((circuit.interface.ports[in_sb_name],
                                   circuit.interface.ports[out_sb_name],
-                                  fault.random.random_bv(bit_width)))
+                                  fault.random.random_bv(bit_width),
+                                  in_sb_node))
 
     # process the raw config data and change it into the actual config addr
     for reg_addr, feat_addr, config_value in raw_config_data:
@@ -467,32 +485,43 @@ def test_tile(num_tracks: int, add_additional_core: bool):
         addr = BitVector[data_width](addr) | BitVector[data_width](tile_id)
         config_data.append((addr, config_value))
 
-    assert len(config_data) / 2 == len(test_data)
+    if add_additional_core:
+        assert len(config_data) / 3 == len(test_data)
+    else:
+        assert len(config_data) / 2 == len(test_data)
 
     # actual tests
     tester = BasicTester(circuit, circuit.clk, circuit.reset)
     tester.poke(circuit.tile_id, tile_id)
 
-    for i in range(0, len(config_data), 2):
+    stride = 3 if add_additional_core else 2
+    for i in range(0, len(config_data), stride):
         tester.reset()
-        addr, config_value = config_data[i]
-        tester.configure(addr, config_value)
-        tester.configure(addr, config_value + 1, False)
-        tester.config_read(addr)
-        tester.eval()
-        tester.expect(circuit.read_config_data, config_value)
+        for j in range(stride):
+            addr, config_value = config_data[i + j]
+            tester.configure(addr, config_value)
+            tester.configure(addr, config_value + 1, False)
+            tester.config_read(addr)
+            tester.eval()
+            tester.expect(circuit.read_config_data, config_value)
 
-        addr, config_value = config_data[i + 1]
-        tester.configure(addr, config_value)
-        tester.configure(addr, config_value + 1, False)
-        tester.config_read(addr)
-        tester.eval()
-        tester.expect(circuit.read_config_data, config_value)
-
-        input_port, output_port, value = test_data[i // 2]
+        input_port, output_port, value, in_node = test_data[i // stride]
 
         tester.poke(input_port, value)
         tester.eval()
+        # add additional error to check, i.e. sending random junk data to
+        # all unrelated ports
+        for bit_width in bit_widths:
+            sb = tile_circuit.sbs[bit_width]
+            sbs = sb.switchbox.get_all_sbs()
+            for sb in sbs:
+                if sb == in_node or sb.io == SwitchBoxIO.SB_OUT:
+                    continue
+                port_name = create_name(str(sb))
+                port = circuit.interface.ports[port_name]
+                tester.poke(port, fault.random.random_bv(bit_width))
+                tester.eval()
+
         tester.expect(output_port, value)
 
     with tempfile.TemporaryDirectory() as tempdir:
@@ -500,7 +529,3 @@ def test_tile(num_tracks: int, add_additional_core: bool):
                                magma_output="coreir-verilog",
                                directory=tempdir,
                                flags=["-Wno-fatal"])
-
-
-if __name__ == "__main__":
-    test_tile(2, True)
