@@ -51,7 +51,7 @@ class _PassThroughFromMux(Generator):
 
 
 def flatten_mux(mux):
-    if mux.height != 1:
+    if mux.height > 1:
         return mux
     return _PassThroughFromMux(mux)
 
