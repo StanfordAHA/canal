@@ -11,6 +11,7 @@ from .cyclone import Node, PortNode, Tile, SwitchBoxNode, SwitchBoxIO, \
     SwitchBox, InterconnectCore, RegisterNode, RegisterMuxNode
 import mantle
 from gemstone.common.mux_wrapper import MuxWrapper
+from gemstone.generator.generator import Generator
 import magma
 from typing import Dict, Tuple, List
 from abc import abstractmethod
@@ -34,6 +35,27 @@ def get_mux_sel_name(node: Node):
     return f"{create_name(str(node))}_sel"
 
 
+class _PassThroughFromMux(Generator):
+    def __init__(self, mux):
+        super().__init__()
+        self.width = mux.width
+        self.height = mux.height
+        self.instance_name = mux.instance_name
+        self._name = mux.name()
+        self.add_ports(I=magma.In(magma.Bits[mux.width]),
+                       O=magma.Out(magma.Bits[mux.width]))
+        self.wire(self.ports.I, self.ports.O)
+
+    def name(self):
+        return self._name
+
+
+def flatten_mux(mux):
+    if mux.height > 1:
+        return mux
+    return _PassThroughFromMux(mux)
+
+
 def create_mux(node: Node):
     conn_in = node.get_conn_in()
     height = len(conn_in)
@@ -46,7 +68,7 @@ def create_mux(node: Node):
     else:
         name = f"WIRE_{node_name}"
     mux = MuxWrapper(height, node.width, name=name)
-    return mux
+    return flatten_mux(mux)
 
 
 class InterconnectConfigurable(Configurable):
