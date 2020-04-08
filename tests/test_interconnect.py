@@ -27,7 +27,7 @@ def assert_coordinate(node: Node, x: int, y: int):
     assert node.x == x and node.y == y
 
 
-def create_dummy_cgra(chip_size, num_tracks, reg_mode, wiring, num_cfg=1):
+def create_dummy_cgra(chip_size, num_tracks, reg_mode, wiring):
     addr_width = 8
     data_width = 32
     bit_widths = [1, 16]
@@ -77,7 +77,7 @@ def create_dummy_cgra(chip_size, num_tracks, reg_mode, wiring, num_cfg=1):
         apply_global_meso_wiring(interconnect, IOSide.None_)
     else:
         assert wiring == GlobalSignalWiring.ParallelMeso
-        apply_global_parallel_meso_wiring(interconnect, IOSide.None_, num_cfg)
+        apply_global_parallel_meso_wiring(interconnect, IOSide.None_)
 
     return bit_widths, data_width, ics, interconnect
 
@@ -310,13 +310,11 @@ def test_dump_pnr():
         assert os.path.isfile(os.path.join(tempdir, f"{design_name}.layout"))
 
 
-@pytest.mark.parametrize("num_cfg", [1, 2, 4])
-def test_parallel_meso_wiring(num_cfg: int):
+def test_parallel_meso_wiring():
     _, _, _, interconnect = create_dummy_cgra(2,
                                               2,
                                               True,
-                                              GlobalSignalWiring.ParallelMeso,
-                                              num_cfg)
+                                              GlobalSignalWiring.ParallelMeso)
     # assert tile coordinates
     circuit = interconnect.circuit()
 
