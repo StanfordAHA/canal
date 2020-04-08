@@ -125,39 +125,31 @@ def apply_global_meso_wiring(interconnect: Interconnect,  io_sides: IOSide):
     return interconnect_read_data_or
 
 
-def apply_global_parallel_meso_wiring(interconnect: Interconnect,
-                                      io_sides: IOSide, num_cfg: int = 1):
+def apply_global_parallel_meso_wiring(interconnect: Interconnect, io_sides: IOSide):
 
     interconnect_read_data_or = apply_global_meso_wiring(interconnect,
                                                          io_sides)
     # interconnect must have config port
     assert "config" in interconnect.ports
-    # there must be at least one configuration path
-    assert num_cfg >= 1
 
     interconnect.remove_port("config")
     # this is not a typo. Total number of bits in configuration address
     # is same as config_data
     config_data_width = interconnect.config_data_width
+    cgra_width = interconnect.x_max - interconnect.x_min + 1
     interconnect.add_port(
         "config",
-        magma.In(magma.Array[num_cfg,
+        magma.In(magma.Array[cgra_width,
                              ConfigurationType(config_data_width,
                                                config_data_width)]))
-
-    cgra_width = interconnect.x_max - interconnect.x_min + 1
-    # number of CGRA columns one configuration controller is in charge of
-    col_per_config = math.ceil(cgra_width / num_cfg)
 
     # looping through on a per-column bases
     for x_coor in range(interconnect.x_min, interconnect.x_max + 1):
         column = interconnect.get_column(x_coor)
         # skip tiles with no config
         column = [entry for entry in column if "config" in entry.ports]
-        # select which configuration controller is connected to that column
-        config_sel = int(x_coor/col_per_config)
         # wire configuration ports to first tile in column
-        interconnect.wire(interconnect.ports.config[config_sel],
+        interconnect.wire(interconnect.ports.config[x_coor],
                           column[0].ports.config)
 
     return interconnect_read_data_or
