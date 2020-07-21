@@ -533,7 +533,7 @@ class TileCircuit(generator.Generator):
                         if port_name not in sb_circuit.ports:
                             sb_circuit.add_port(port_name,
                                                 magma.In(magma.Bits[bit_width]))
-                            self.wire(self.core.ports[port_name],
+                            self.wire(self.__get_port(port_name),
                                       sb_circuit.ports[port_name])
                         sb_circuit.wire(sb_circuit.ports[port_name],
                                         mux.ports.I[idx])
@@ -588,6 +588,15 @@ class TileCircuit(generator.Generator):
             hash_value ^= hash(cb)
         self.set_hash(hash_value)
         self.set_skip_hash(False)
+
+    def __get_port(self, port_name):
+        if port_name in self.core.ports:
+            return self.core.ports[port_name]
+        else:
+            for core in self.additional_cores:
+                if port_name in core.ports:
+                    return core.ports[port_name]
+        return None
 
     def __add_tile_id(self):
         self.add_port("tile_id",
