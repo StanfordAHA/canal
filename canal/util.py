@@ -2,7 +2,7 @@ from gemstone.common.core import Core
 from typing import Tuple, List, Dict, Callable
 from .cyclone import SwitchBoxSide, SwitchBoxIO, InterconnectPolicy, \
     InterconnectGraph, DisjointSwitchBox, WiltonSwitchBox, \
-    ImranSwitchBox, Tile, SwitchBox
+    ImranSwitchBox, Tile, SwitchBox, CoreConnectionType
 from .circuit import CoreInterface
 import enum
 
@@ -57,7 +57,8 @@ def create_uniform_interconnect(width: int,
                                 pipeline_reg:
                                 List[Tuple[int, SwitchBoxSide]] = None,
                                 io_sides: IOSide = IOSide.None_,
-                                io_conn: Dict[str, Dict[str, List[int]]] = None
+                                io_conn: Dict[str, Dict[str, List[int]]] = None,
+                                additional_core_fn: Callable[[int, int], Core] = lambda _: None
                                 ) -> InterconnectGraph:
     """Create a uniform interconnect with column-based design. We will use
     disjoint switch for now. Configurable parameters in terms of interconnect
@@ -115,6 +116,12 @@ def create_uniform_interconnect(width: int,
             core = column_core_fn(x, y)
             core_interface = CoreInterface(core)
             interconnect.set_core(x, y, core_interface)
+
+            additional_core = additional_core_fn(x, y)
+            if additional_core is not None:
+                additional_core_interface = CoreInterface(additional_core)
+                tile_circuit.add_additional_core(additional_core_interface,
+                                                 CoreConnectionType.SB | CoreConnectionType.CB)
 
     # create tiles without SB
     for x in range(width):
