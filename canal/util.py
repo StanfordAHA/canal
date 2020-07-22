@@ -58,7 +58,7 @@ def create_uniform_interconnect(width: int,
                                 List[Tuple[int, SwitchBoxSide]] = None,
                                 io_sides: IOSide = IOSide.None_,
                                 io_conn: Dict[str, Dict[str, List[int]]] = None,
-                                additional_core_fn: Callable[[int, int], Core] = lambda _: None
+                                additional_core_fn: Callable[[int, int], Core] = lambda _, __: None
                                 ) -> InterconnectGraph:
     """Create a uniform interconnect with column-based design. We will use
     disjoint switch for now. Configurable parameters in terms of interconnect
