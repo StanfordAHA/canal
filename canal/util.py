@@ -58,7 +58,8 @@ def create_uniform_interconnect(width: int,
                                 List[Tuple[int, SwitchBoxSide]] = None,
                                 io_sides: IOSide = IOSide.None_,
                                 io_conn: Dict[str, Dict[str, List[int]]] = None,
-                                additional_core_fn: Callable[[int, int], Core] = lambda _, __: None
+                                additional_core_fn: Callable[[int, int], Core] = lambda _, __: None,
+                                inter_core_connection: Dict[str, List[str]] = None
                                 ) -> InterconnectGraph:
     """Create a uniform interconnect with column-based design. We will use
     disjoint switch for now. Configurable parameters in terms of interconnect
@@ -143,6 +144,12 @@ def create_uniform_interconnect(width: int,
     for port_name in port_names:
         conns = port_connections[port_name]
         interconnect.set_core_connection_all(port_name, conns)
+
+    if inter_core_connection is not None:
+        for from_name, to_names in inter_core_connection.items():
+            for to_name in to_names:
+                interconnect.set_inter_core_connection(from_name, to_name)
+
     # set the actual interconnections
     # sort the tracks by length
     track_lens = list(track_info.keys())

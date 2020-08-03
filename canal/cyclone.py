@@ -516,6 +516,9 @@ class Tile:
         assert port_name in self.__port_core
         return self.__port_core[port_name].get_port_ref(port_name)
 
+    def get_port(self, port_name):
+        return self.ports.get(port_name, None)
+
     def core_has_input(self, port: str):
         return port in self.inputs
 
@@ -670,6 +673,13 @@ class InterconnectGraph:
                                                         io))
             self.set_core_connection(x, y, port_name, connections)
 
+    def set_inter_core_connection(self, from_name: str, to_name: str):
+        for tile in self.__tiles.values():
+            from_node: PortNode = tile.get_port(from_name)
+            to_node: PortNode = tile.get_port(to_name)
+            if from_node is not None and to_node is not None:
+                from_node.add_edge(to_node)
+
     def set_core(self, x: int, y: int, core: InterconnectCore):
         tile = self.get_tile(x, y)
         tile.set_core(core)
@@ -689,7 +699,7 @@ class InterconnectGraph:
                  port_name: str) -> Union[PortNode, None]:
         tile = self.get_tile(x, y)
         if tile is not None:
-            return tile.ports[port_name]
+            return tile.get_port(port_name)
         return None
 
     def __getitem__(self, item: Tuple[int, int]):
