@@ -7,8 +7,8 @@ install:
     - docker run -d -it --name canal keyiz/garnet-flow bash
     - docker cp ../canal canal:/
     - docker exec -i canal bash -c "pip install -r /canal/requirements.txt"
-    - docker exec -i canal bash -c "pip install pytest python-coveralls"
-    - docker exec -i canal bash -c "pip install pytest-cov pytest-codestyle"
+    - docker exec -i canal bash -c "pip install pytest==5.4.3 python-coveralls"
+    - docker exec -i canal bash -c "pip install pytest-cov pytest-pycodestyle"
 
 script:
     - docker exec -i canal bash -c "/canal/.travis/run.sh"
