@@ -1,6 +1,7 @@
 from hwtypes import BitVector
 from gemstone.common.dummy_core_magma import DummyCore
 from gemstone.common.testers import BasicTester
+from gemstone.common.util import compress_config_data
 from canal.checker import check_graph_isomorphic
 from canal.interconnect import *
 import tempfile
@@ -155,6 +156,7 @@ def test_interconnect(num_tracks: int, chip_size: int,
                                                                    next_node)
 
                         config_entry.append(entry)
+                    config_entry = compress_config_data(config_entry)
                     assert src_node is not None and dst_node is not None
                     config_data.append(config_entry)
                     value = fault.random.random_bv(bit_width)
@@ -190,6 +192,7 @@ def test_interconnect(num_tracks: int, chip_size: int,
                                                                    next_node)
 
                         config_entry.append(entry)
+                    config_entry = compress_config_data(config_entry)
                     assert src_node is not None and dst_node is not None
                     config_data.append(config_entry)
                     value = fault.random.random_bv(bit_width)

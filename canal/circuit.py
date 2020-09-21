@@ -776,9 +776,10 @@ class TileCircuit(generator.Generator):
             circuit = self.sbs[src_node.width]
         else:
             raise NotImplementedError(type(dst_node))
-        reg_index = self.__find_reg_index(circuit, dst_node)
+        reg_name = get_mux_sel_name(dst_node)
+        reg_idx, config_data = circuit.get_config_data(reg_name, config_data)
         feature_addr = self.features().index(circuit)
-        return reg_index, feature_addr, config_data
+        return reg_idx, feature_addr, config_data
 
     def __lift_ports(self):
         # lift the internal ports only if we have empty switch boxes
@@ -810,13 +811,6 @@ class TileCircuit(generator.Generator):
                 # if it has connection, then we connect it to the core
                 self.add_port(port_name, magma.Out(magma.Bits[bit_width]))
                 self.wire(self.ports[port_name], self.core.ports[port_name])
-
-    @staticmethod
-    def __find_reg_index(circuit: InterconnectConfigurable, node: Node):
-        config_names = list(circuit.registers.keys())
-        config_names.sort()
-        mux_sel_name = get_mux_sel_name(node)
-        return config_names.index(mux_sel_name)
 
     def name(self):
         if self.core is not None:

@@ -2,6 +2,7 @@ from gemstone.common.core import ConfigurableCore
 from hwtypes import BitVector
 from gemstone.common.dummy_core_magma import DummyCore
 from gemstone.common.testers import BasicTester
+from gemstone.common.util import compress_config_data
 from canal.cyclone import *
 from canal.circuit import *
 import tempfile
@@ -126,17 +127,16 @@ def test_sb(num_tracks: int, bit_width: int, sb_ctor,
                 mux_sel_name = get_mux_sel_name(connected_sb)
                 assert mux_sel_name in config_names
                 assert connected_sb.io == SwitchBoxIO.SB_OUT
-                addr = config_names.index(mux_sel_name)
                 index = connected_sb.get_conn_in().index(sb)
-                entry.append((addr, index))
+                entry.append(sb_circuit.get_config_data(mux_sel_name, index))
                 # we will also configure the register, if connected
                 reg_node, reg_mux_node = find_reg_mux_node(connected_sb)
                 if reg_mux_node is not None:
                     mux_sel_name = get_mux_sel_name(reg_mux_node)
                     assert mux_sel_name in config_names
-                    addr = config_names.index(mux_sel_name)
                     index = reg_mux_node.get_conn_in().index(reg_node)
-                    entry.append((addr, index))
+                    entry.append(sb_circuit.get_config_data(mux_sel_name,
+                                                            index))
                 config_data.append(entry)
                 # get port
                 output_sb_name = create_name(str(connected_sb))
@@ -146,6 +146,10 @@ def test_sb(num_tracks: int, bit_width: int, sb_ctor,
                                   circuit.interface.ports[output_sb_name],
                                   fault.random.random_bv(bit_width)))
                 test_data.append(entry)
+
+    # compress the config data
+    for i in range(len(config_data)):
+        config_data[i] = compress_config_data(config_data[i])
 
     # poke and test, without registers configured
     assert len(config_data) == len(test_data)
@@ -160,14 +164,13 @@ def test_sb(num_tracks: int, bit_width: int, sb_ctor,
             tester.config_read(BitVector[addr_width](addr))
             tester.eval()
             tester.expect(circuit.read_config_data, index)
-        if len(configs) == 1:
+        if len(data) == 1:
             # this is pass through mode
             for input_port, output_port, value in data:
                 tester.poke(input_port, value)
                 tester.eval()
                 tester.expect(output_port, value)
         else:
-            assert len(data) > 1
             for j in range(len(data)):
                 if j != 0:
                     tester.eval()
@@ -241,17 +244,15 @@ def test_stall(sb_ctor):
                 mux_sel_name = get_mux_sel_name(connected_sb)
                 assert mux_sel_name in config_names
                 assert connected_sb.io == SwitchBoxIO.SB_OUT
-                addr = config_names.index(mux_sel_name)
                 index = connected_sb.get_conn_in().index(sb)
-                entry.append((addr, index))
+                entry.append(sb_circuit.get_config_data(mux_sel_name, index))
                 # we will also configure the register, if connected
                 reg_node, reg_mux_node = find_reg_mux_node(connected_sb)
                 assert reg_mux_node is not None
                 mux_sel_name = get_mux_sel_name(reg_mux_node)
                 assert mux_sel_name in config_names
-                addr = config_names.index(mux_sel_name)
                 index = reg_mux_node.get_conn_in().index(reg_node)
-                entry.append((addr, index))
+                entry.append(sb_circuit.get_config_data(mux_sel_name, index))
                 config_data.append(entry)
                 # get port
                 output_sb_name = create_name(str(connected_sb))
@@ -261,6 +262,11 @@ def test_stall(sb_ctor):
                                   circuit.interface.ports[output_sb_name],
                                   fault.random.random_bv(bit_width)))
                 test_data.append(entry)
+
+    # compress the config data
+    # compress the config data
+    for i in range(len(config_data)):
+        config_data[i] = compress_config_data(config_data[i])
 
     tester.poke(circuit.interface["stall"], 1)
     # poke and test, without registers configured
@@ -334,6 +340,8 @@ class AdditionalDummyCore(ConfigurableCore):
 @pytest.mark.parametrize('num_tracks', [2, 4])
 @pytest.mark.parametrize("add_additional_core", [True, False])
 def test_tile(num_tracks: int, add_additional_core: bool):
+    import random
+    random.seed(0)
     addr_width = 8
     data_width = 32
     bit_widths = [1, 16]
@@ -477,6 +485,11 @@ def test_tile(num_tracks: int, add_additional_core: bool):
                                   fault.random.random_bv(bit_width),
                                   in_sb_node))
 
+    if add_additional_core:
+        assert len(raw_config_data) / 3 == len(test_data)
+    else:
+        assert len(raw_config_data) / 2 == len(test_data)
+
     # process the raw config data and change it into the actual config addr
     for reg_addr, feat_addr, config_value in raw_config_data:
         reg_addr = reg_addr << tile_circuit.feature_config_slice.start
@@ -485,11 +498,6 @@ def test_tile(num_tracks: int, add_additional_core: bool):
         addr = BitVector[data_width](addr) | BitVector[data_width](tile_id)
         config_data.append((addr, config_value))
 
-    if add_additional_core:
-        assert len(config_data) / 3 == len(test_data)
-    else:
-        assert len(config_data) / 2 == len(test_data)
-
     # actual tests
     tester = BasicTester(circuit, circuit.clk, circuit.reset)
     tester.poke(circuit.tile_id, tile_id)
@@ -497,8 +505,9 @@ def test_tile(num_tracks: int, add_additional_core: bool):
     stride = 3 if add_additional_core else 2
     for i in range(0, len(config_data), stride):
         tester.reset()
-        for j in range(stride):
-            addr, config_value = config_data[i + j]
+        c_data = config_data[i:i + stride]
+        c_data = compress_config_data(c_data)
+        for addr, config_value in c_data:
             tester.configure(addr, config_value)
             tester.configure(addr, config_value + 1, False)
             tester.config_read(addr)
