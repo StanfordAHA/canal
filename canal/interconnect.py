@@ -540,6 +540,22 @@ class Interconnect(generator.Generator):
                 result.append(tile)
         return result
 
+    def get_skip_addr(self):
+        result = set()
+        for y in range(self.y_min, self.y_max + 1):  # y_max is inclusive
+            for x in range(self.x_min, self.x_max + 1): # x_max is inclusive
+                tile = self.tile_circuits[(x, y)]
+                for idx, feat in enumerate(tile.features()):
+                    if hasattr(feat, "skip_compression") and \
+                            feat.skip_compression:
+                        # need to skip all address in this feature space
+                        # compute the number address here
+                        num_addr = 1 << self.config_addr_width
+                        for reg_addr in range(num_addr):
+                            addr = self.get_config_addr(reg_addr, idx, x, y)
+                            result.add(addr)
+        return result
+
     def get_graph(self, bit_width: int):
         return self.__graphs[bit_width]
 
