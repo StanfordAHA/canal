@@ -327,3 +327,12 @@ def test_parallel_meso_wiring(num_cfg: int):
     with tempfile.TemporaryDirectory() as tempdir:
         rtl_path = os.path.join(tempdir, "rtl")
         magma.compile(rtl_path, circuit, output="coreir-verilog")
+
+
+def test_skip_addr():
+    _, _, _, interconnect = create_dummy_cgra(2, 2, False,
+                                              GlobalSignalWiring.ParallelMeso)
+    # set 1, 1 to be ignored addr
+    interconnect.tile_circuits[(1, 1)].core.skip_compression = True
+    skip_addrs = interconnect.get_skip_addr()
+    assert len(skip_addrs) == 256
