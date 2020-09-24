@@ -1,1 +1,1 @@
--e git://github.com/StanfordAHA/gemstone.git@compact_reg#egg=gemstone
+-e git://github.com/StanfordAHA/gemstone.git#egg=gemstone
