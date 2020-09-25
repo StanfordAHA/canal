@@ -285,7 +285,8 @@ class SB(InterconnectConfigurable):
             and_gate = FromMagma(mantle.DefineAnd(2, 1))
             self.wire(and_gate.ports.I0[0], eq_gate.ports.O)
             self.wire(and_gate.ports.I1, invert.ports.O)
-            self.wire(reg.ports.CE, and_gate.ports.O[0])
+            self.wire(reg.ports.CE, self.convert(and_gate.ports.O[0],
+                                                 magma.enable))
 
     def __get_connected_port_names(self) -> List[str]:
         # this is to uniquify the SB given different port connections
