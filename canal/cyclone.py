@@ -725,7 +725,7 @@ class InterconnectGraph:
             return tile.get_sb(item.side, item.track, item.io) == item
         return False
 
-    def dump_graph(self, filename: str):
+    def dump_graph(self, filename: str, max_num_col):
         with open(filename, "w+") as f:
             padding = "  "
             begin = "BEGIN"
@@ -747,6 +747,8 @@ class InterconnectGraph:
                         if node_.x == n.x and node_.y == n.y:
                             # this is internal connection so we skip
                             continue
+                        if n.x >= max_num_col:
+                            continue
                     write_line(padding * 3 + n.node_str())
                 write_line(padding + end)
 
@@ -760,7 +762,10 @@ class InterconnectGraph:
                                                   str(track_to),
                                                   str(side_to.value)]))
                 write_line(end)
-            for _, tile in self.__tiles.items():
+            for (x, _), tile in self.__tiles.items():
+                if x >= max_num_col:
+                    # since x starts from 0, if x == max_num_col, we are actually out of bound
+                    continue
                 write_line(str(tile))
                 sbs = tile.switchbox.get_all_sbs()
                 for sb in sbs:
