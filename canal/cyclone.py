@@ -738,6 +738,8 @@ class InterconnectGraph:
                 if len(node_) == 0:
                     # don't output if it doesn't have any connections
                     return
+                if node_.x >= max_num_col:
+                    return
                 # TODO: need to test if it is deterministic
                 write_line(padding + node_.node_str())
                 write_line(padding + begin)
@@ -747,8 +749,8 @@ class InterconnectGraph:
                         if node_.x == n.x and node_.y == n.y:
                             # this is internal connection so we skip
                             continue
-                        if n.x >= max_num_col:
-                            continue
+                    if n.x >= max_num_col:
+                        continue
                     write_line(padding * 3 + n.node_str())
                 write_line(padding + end)
 
