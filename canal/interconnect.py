@@ -389,12 +389,14 @@ class Interconnect(generator.Generator):
         result = {}
         for coord in self.tile_circuits:
             tile = self.tile_circuits[coord]
-            info = tile.core.pnr_info()
-            core_name = tile.core.name()
-            if core_name not in result:
-                result[core_name] = info
-            else:
-                assert result[core_name] == info
+            cores = [tile.core] + tile.additional_cores
+            for core in cores:
+                info = core.pnr_info()
+                core_name = core.name()
+                if core_name not in result:
+                    result[core_name] = info
+                else:
+                    assert result[core_name] == info
         return result
 
     @staticmethod
@@ -474,9 +476,11 @@ class Interconnect(generator.Generator):
                     for y in range(self.y_max + 1):
                         for x in range(self.x_max + 1):
                             coord = (x, y)
+                            tile = self.tile_circuits[coord]
+                            cores = [tile.core] + tile.additional_cores
+                            core_names = [core.name() for core in cores]
                             if coord not in self.tile_circuits or \
-                                    self.tile_circuits[
-                                        coord].core.name() != core_name:
+                                    core_name not in core_names:
                                 f.write("0")
                             else:
                                 f.write("1")
