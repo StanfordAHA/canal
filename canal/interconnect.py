@@ -370,7 +370,15 @@ class Interconnect(generator.Generator):
     def configure_placement(self, x: int, y: int, instr):
         tile = self.tile_circuits[(x, y)]
         core: ConfigurableCore = tile.core
-        result = core.get_config_bitstream(instr)
+        cores = [tile.core] + tile.additional_cores
+        result = None
+        for core in cores:
+            try:
+                result = core.get_config_bitstream(instr)
+                break
+            except:
+                continue
+        assert result is not None, f"Unable to get config bitstream from tile ({x}, {y})"
         feature_addr = tile.features().index(core)
         for i in range(len(result)):
             entry = result[i]
