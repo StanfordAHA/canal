@@ -494,14 +494,16 @@ class Interconnect(generator.Generator):
                     for y in range(self.y_max + 1):
                         for x in range(self.x_max + 1):
                             coord = (x, y)
-                            tile = self.tile_circuits[coord]
-                            cores = [tile.core] + tile.additional_cores
-                            core_names = [core.name() for core in cores]
-                            if coord not in self.tile_circuits or \
-                                    core_name not in core_names:
+                            if coord not in self.tile_circuits:
                                 f.write("0")
                             else:
-                                f.write("1")
+                                tile = self.tile_circuits[coord]
+                                cores = [tile.core] + tile.additional_cores
+                                core_names = [core.name() for core in cores]
+                                if core_name not in core_names:
+                                    f.write("0")
+                                else:
+                                    f.write("1")
                         f.write("\n")
                     f.write("END\n")
             # handle registers
