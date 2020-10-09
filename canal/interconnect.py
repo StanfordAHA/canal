@@ -369,11 +369,12 @@ class Interconnect(generator.Generator):
 
     def configure_placement(self, x: int, y: int, instr, pnr_tag=None):
         tile = self.tile_circuits[(x, y)]
-        core: ConfigurableCore = tile.core
+        core_: ConfigurableCore = None
         result = None
         if pnr_tag is None:
             # backward-compatible with the old code usage
-            result = core.get_config_bitstream(instr)
+            result = tile.core.get_config_bitstream(instr)
+            core_ = tile.core
         else:
             cores = [tile.core] + tile.additional_cores
             has_configured = False
@@ -387,9 +388,11 @@ class Interconnect(generator.Generator):
                     if tag.tag_name == pnr_tag:
                         result = core.get_config_bitstream(instr)
                         has_configured = True
+                        core_ = core
                         break
         assert result is not None, f"Unable to get config bitstream from tile ({x}, {y})"
-        feature_addr = tile.features().index(core)
+        assert core_ is not None, f"Unable to get config bitstream from tile ({x}, {y})"
+        feature_addr = tile.features().index(core_)
         for i in range(len(result)):
             entry = result[i]
             if len(entry) == 2:
