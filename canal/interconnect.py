@@ -301,6 +301,8 @@ class Interconnect(generator.Generator):
             # remove all the global signals
             for signal in self.globals:
                 if signal in tile_circuit.ports:
+                    if tile.core is not None and signal in tile.core.ports:
+                        continue
                     tile_circuit.ports.pop(signal)
         # remove empty tiles
         for coord in tiles_to_remove:
