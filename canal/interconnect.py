@@ -608,6 +608,22 @@ class Interconnect(generator.Generator):
         raise Exception(str(node) + " does not have corresponding "
                                     "top-level ports")
 
+    def get_top_port_name_by_coord(self, coord, bit_width):
+        assert not self.__lifted_ports
+        tile = self.__tiles[coord][bit_width]
+        interface_node = None
+        for port_name, port_node in tile.ports.items():
+            if len(port_node.get_conn_in()) == 0 and len(port_node) == 0:
+                # need to find the port that doesn't connect to anything
+                # but has the same bit width
+                interface_node = port_node
+                break
+        for port_name, n in self.__interface.items():
+            if n == interface_node:
+                return port_name
+        raise Exception(f"{coord} does not have corresponding "
+                        f"top-level ports")
+
     def get_graph(self, bit_width: int):
         return self.__graphs[bit_width]
 
