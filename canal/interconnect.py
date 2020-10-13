@@ -1,7 +1,7 @@
 import magma
 from ordered_set import OrderedSet
 import os
-from .cyclone import InterconnectGraph, SwitchBoxSide, Node
+from .cyclone import InterconnectGraph, SwitchBoxSide, Node, PortNode
 from .cyclone import Tile, SwitchBoxNode, SwitchBoxIO, RegisterMuxNode
 from typing import Dict, Tuple, List
 import gemstone.generator.generator as generator
@@ -175,7 +175,6 @@ class Interconnect(generator.Generator):
                (feat_addr << tile.tile_id_width)
         addr = addr | tile_id
         return addr
-
 
     def __lift_ports(self):
         # we assume it's a rectangular grid
@@ -585,6 +584,29 @@ class Interconnect(generator.Generator):
                             addr = self.get_config_addr(reg_addr, idx, x, y)
                             result.add(addr)
         return result
+
+    def get_top_port_name(self, node: Node):
+        interface_node = None
+        if self.__lifted_ports:
+            # this is straight forward
+            interface_node = node
+        else:
+            assert (len(node.get_conn_in()) == 0) ^ (len(node) == 0), \
+                "External ports cannot have incoming connections"
+            x, y = node.x, node.y
+            bit_width = node.width
+            tile = self.__tiles[(x, y)][bit_width]
+            for port_name, port_node in tile.ports.items():
+                if len(port_node.get_conn_in()) == 0 and len(port_node):
+                    # need to find the port that doesn't connect to anything
+                    # but has the same bit width
+                    interface_node = port_node
+                    break
+        for port_name, n in self.__interface.items():
+            if n == interface_node:
+                return port_name
+        raise Exception(str(node) + " does not have corresponding "
+                                    "top-level ports")
 
     def get_graph(self, bit_width: int):
         return self.__graphs[bit_width]

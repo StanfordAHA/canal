@@ -160,10 +160,8 @@ def test_interconnect(num_tracks: int, chip_size: int,
                     assert src_node is not None and dst_node is not None
                     config_data.append(config_entry)
                     value = fault.random.random_bv(bit_width)
-                    src_name = create_name(str(src_node)) + \
-                        f"_X{src_node.x}_Y{src_node.y}"
-                    dst_name = create_name(str(dst_node)) + \
-                        f"_X{dst_node.x}_Y{dst_node.y}"
+                    src_name = interconnect.get_top_port_name(src_node)
+                    dst_name = interconnect.get_top_port_name(dst_node)
                     test_data.append((circuit.interface[src_name],
                                       circuit.interface[dst_name],
                                       value))
@@ -196,10 +194,8 @@ def test_interconnect(num_tracks: int, chip_size: int,
                     assert src_node is not None and dst_node is not None
                     config_data.append(config_entry)
                     value = fault.random.random_bv(bit_width)
-                    src_name = create_name(str(src_node)) + \
-                        f"_X{src_node.x}_Y{src_node.y}"
-                    dst_name = create_name(str(dst_node)) + \
-                        f"_X{dst_node.x}_Y{dst_node.y}"
+                    src_name = interconnect.get_top_port_name(src_node)
+                    dst_name = interconnect.get_top_port_name(dst_node)
                     test_data.append((circuit.interface[src_name],
                                       circuit.interface[dst_name],
                                       value))
