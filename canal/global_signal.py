@@ -61,7 +61,7 @@ def apply_global_meso_wiring(interconnect: Interconnect,  io_sides: IOSide):
     # "river routing" for global signal
     global_ports = interconnect.globals
     width, height = interconnect.x_max + 1, interconnect.y_max + 1
-    x_min, x_max, y_min, y_max = get_array_size(width, height, io_sides)
+    x_min, x_max, = interconnect.x_min, interconnect.x_max
     cgra_width = x_max - x_min + 1
     interconnect_read_data_or = \
         FromMagma(mantle.DefineOr(cgra_width, interconnect.config_data_width))
@@ -72,6 +72,8 @@ def apply_global_meso_wiring(interconnect: Interconnect,  io_sides: IOSide):
         column = interconnect.get_column(x)
         # skip the margin
         column = [entry for entry in column if "config" in entry.ports]
+        if len(column) == 0:
+            continue
         # wire global inputs to first tile in column
         for signal in global_ports:
             interconnect.wire(interconnect.ports[signal],
