@@ -73,12 +73,12 @@ def create_dummy_cgra(chip_size, num_tracks, reg_mode, wiring, num_cfg=1):
     interconnect.finalize()
     # wiring
     if wiring == GlobalSignalWiring.Fanout:
-        apply_global_fanout_wiring(interconnect, IOSide.None_)
+        apply_global_fanout_wiring(interconnect)
     elif wiring == GlobalSignalWiring.Meso:
-        apply_global_meso_wiring(interconnect, IOSide.None_)
+        apply_global_meso_wiring(interconnect)
     else:
         assert wiring == GlobalSignalWiring.ParallelMeso
-        apply_global_parallel_meso_wiring(interconnect, IOSide.None_, num_cfg)
+        apply_global_parallel_meso_wiring(interconnect, num_cfg)
 
     return bit_widths, data_width, ics, interconnect
 

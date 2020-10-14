@@ -18,10 +18,25 @@ class GlobalSignalWiring(enum.Enum):
     ParallelMeso = enum.auto()
 
 
-def apply_global_fanout_wiring(interconnect: Interconnect, io_sides: IOSide):
+def get_x_range_cores(interconnect: Interconnect):
+    x_min, x_max, = interconnect.x_min, interconnect.x_max
+    x_range = []
+    for x in range(x_min, x_max + 1):
+        column = interconnect.get_column(x)
+        # skip the margin
+        column = [entry for entry in column if "config" in entry.ports]
+        if len(column) == 0:
+            continue
+        else:
+            x_range.append(x)
+    x_min = x_range[0]
+    x_max = x_range[-1]
+    return x_min, x_max
+
+
+def apply_global_fanout_wiring(interconnect: Interconnect):
     # straight-forward fanout for global signals
-    width, height = interconnect.x_max + 1, interconnect.y_max + 1
-    x_min, x_max, y_min, y_max = get_array_size(width, height, io_sides)
+    x_min, x_max, = get_x_range_cores(interconnect)
     global_ports = interconnect.globals
     cgra_width = x_max - x_min + 1
     interconnect_read_data_or = \
@@ -57,11 +72,10 @@ def apply_global_fanout_wiring(interconnect: Interconnect, io_sides: IOSide):
     return interconnect_read_data_or
 
 
-def apply_global_meso_wiring(interconnect: Interconnect,  io_sides: IOSide):
+def apply_global_meso_wiring(interconnect: Interconnect):
     # "river routing" for global signal
     global_ports = interconnect.globals
-    width, height = interconnect.x_max + 1, interconnect.y_max + 1
-    x_min, x_max, = interconnect.x_min, interconnect.x_max
+    x_min, x_max, = get_x_range_cores(interconnect)
     cgra_width = x_max - x_min + 1
     interconnect_read_data_or = \
         FromMagma(mantle.DefineOr(cgra_width, interconnect.config_data_width))
@@ -127,11 +141,9 @@ def apply_global_meso_wiring(interconnect: Interconnect,  io_sides: IOSide):
     return interconnect_read_data_or
 
 
-def apply_global_parallel_meso_wiring(interconnect: Interconnect,
-                                      io_sides: IOSide, num_cfg: int = 1):
+def apply_global_parallel_meso_wiring(interconnect: Interconnect, num_cfg: int = 1):
 
-    interconnect_read_data_or = apply_global_meso_wiring(interconnect,
-                                                         io_sides)
+    interconnect_read_data_or = apply_global_meso_wiring(interconnect)
     # interconnect must have config port
     assert "config" in interconnect.ports
     # there must be at least one configuration path
