@@ -34,7 +34,7 @@ def get_x_range_cores(interconnect: Interconnect):
     return x_min, x_max
 
 
-def apply_global_fanout_wiring(interconnect: Interconnect):
+def apply_global_fanout_wiring(interconnect: Interconnect, io_sides: IOSide = IOSide.None_):
     # straight-forward fanout for global signals
     x_min, x_max, = get_x_range_cores(interconnect)
     global_ports = interconnect.globals
@@ -72,7 +72,7 @@ def apply_global_fanout_wiring(interconnect: Interconnect):
     return interconnect_read_data_or
 
 
-def apply_global_meso_wiring(interconnect: Interconnect):
+def apply_global_meso_wiring(interconnect: Interconnect, io_sides: IOSide = IOSide.None_):
     # "river routing" for global signal
     global_ports = interconnect.globals
     x_min, x_max, = get_x_range_cores(interconnect)
@@ -141,7 +141,8 @@ def apply_global_meso_wiring(interconnect: Interconnect):
     return interconnect_read_data_or
 
 
-def apply_global_parallel_meso_wiring(interconnect: Interconnect, num_cfg: int = 1):
+def apply_global_parallel_meso_wiring(interconnect: Interconnect,
+                                      io_sides: IOSide = IOSide.None_, num_cfg: int = 1):
 
     interconnect_read_data_or = apply_global_meso_wiring(interconnect)
     # interconnect must have config port
