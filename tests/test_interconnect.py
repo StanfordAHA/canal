@@ -252,6 +252,37 @@ def test_interconnect(num_tracks: int, chip_size: int,
     #     check_graph_isomorphic(ics, rtl_path)
 
 
+def test_1x1():
+    ics = {}
+    in_conn = []
+    out_conn = []
+    addr_width = 8
+    data_width = 32
+    for side in SwitchBoxSide:
+        in_conn.append((side, SwitchBoxIO.SB_IN))
+        out_conn.append((side, SwitchBoxIO.SB_OUT))
+
+    core = DummyCore()
+
+    for bit_width in {1, 16}:
+        ic = create_uniform_interconnect(1, 1, bit_width,
+                                         lambda _, __: core,
+                                         {f"data_in_{bit_width}b": in_conn,
+                                          f"data_out_{bit_width}b": out_conn},
+                                         {1: 2},
+                                         SwitchBoxType.Disjoint)
+        ics[bit_width] = ic
+    interconnect = Interconnect(ics, addr_width, data_width, 16,
+                                lift_ports=True)
+    interconnect.finalize()
+    apply_global_fanout_wiring(interconnect)
+    circuit = interconnect.circuit()
+    with tempfile.TemporaryDirectory() as tempdir:
+        filename = os.path.join(tempdir, "test1x1")
+        import magma
+        magma.compile(filename, circuit, output="coreir-verilog")
+
+
 def test_dump_pnr():
     num_tracks = 2
     addr_width = 8

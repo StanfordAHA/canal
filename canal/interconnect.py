@@ -67,8 +67,8 @@ class Interconnect(generator.Generator):
                 y_max = y
             if y < y_min:
                 y_min = y
-        assert x_max > x_min
-        assert y_max > y_min
+        assert x_max >= x_min
+        assert y_max >= y_min
 
         self.x_min, self.x_max = x_min, x_max
         self.y_min, self.y_max = y_min, y_max
@@ -198,7 +198,7 @@ class Interconnect(generator.Generator):
                         if sb_node.side != SwitchBoxSide.WEST:
                             continue
                         working_set.append(sb_node)
-                elif x == self.x_max:
+                if x == self.x_max:
                     # we lift east/right ports
                     for sb_node in all_sbs:
                         if sb_node.side != SwitchBoxSide.EAST:
@@ -210,7 +210,7 @@ class Interconnect(generator.Generator):
                         if sb_node.side != SwitchBoxSide.NORTH:
                             continue
                         working_set.append(sb_node)
-                elif y == self.y_max:
+                if y == self.y_max:
                     # we lift south/bottom ports
                     for sb_node in all_sbs:
                         if sb_node.side != SwitchBoxSide.SOUTH:
