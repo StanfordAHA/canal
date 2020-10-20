@@ -285,9 +285,10 @@ def test_1x1():
     # test routing for 1x1
     compares = {}
     for seed in {0, 1}:
-        routing_result = route_one_tile(interconnect, 0, 0,
-                                        ports=["data_in_16b", "data_out_16b"],
-                                        seed=seed)
+        routing_result, _ = route_one_tile(interconnect, 0, 0,
+                                           ports=["data_in_16b",
+                                                  "data_out_16b"],
+                                           seed=seed)
         # routing result ordering is the same as ports
         assert len(routing_result) == 2
         bs = interconnect.get_route_bitstream(routing_result)

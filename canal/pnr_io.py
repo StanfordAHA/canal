@@ -132,6 +132,14 @@ def __get_output_ports(interconnect: Interconnect, bit_width: int):
     return __get_ports(interconnect, bit_width, lambda x: x.is_output())
 
 
+def __get_interface_name(interconnect: Interconnect):
+    result = {}
+    interface = interconnect.interface()
+    for port_name, port_node in interface.items():
+        result[port_node] = port_name
+    return result
+
+
 def route_one_tile(interconnect: Interconnect,
                    x: int,
                    y: int,
@@ -141,6 +149,8 @@ def route_one_tile(interconnect: Interconnect,
     r = random.Random(seed)
 
     result = {}
+    mapping = {}
+    interface_mapping = __get_interface_name(interconnect)
     tile = interconnect.tile_circuits[(x, y)]
     port_nodes = {}
     for tile_g in tile.tiles.values():
@@ -174,6 +184,7 @@ def route_one_tile(interconnect: Interconnect,
             src_node = input_ports[bit_width][src_index]
             input_ports[bit_width].pop(src_index)
             path = __route(src_node, node, used_nodes)
+            mapping[port_name] = interface_mapping[src_node]
         else:
             # it's on output
             # randomly choose an output
@@ -181,8 +192,9 @@ def route_one_tile(interconnect: Interconnect,
             dst_node = output_ports[bit_width][dst_index]
             output_ports[bit_width].pop(dst_index)
             path = __route(node, dst_node, used_nodes)
+            mapping[port_name] = interface_mapping[dst_node]
         for n in path:
             used_nodes.add(n)
         result[f"e{len(result)}"] = [path]
 
-    return result
+    return result, mapping
