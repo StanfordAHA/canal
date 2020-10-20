@@ -3,6 +3,7 @@ from gemstone.common.dummy_core_magma import DummyCore
 from gemstone.common.testers import BasicTester
 from gemstone.common.util import compress_config_data
 from canal.checker import check_graph_isomorphic
+from canal.pnr_io import route_one_tile
 from canal.interconnect import *
 import tempfile
 import fault.random
@@ -12,6 +13,7 @@ from canal.global_signal import apply_global_fanout_wiring, \
     GlobalSignalWiring
 import pytest
 import filecmp
+import magma
 
 
 def assert_tile_coordinate(tile: Tile, x: int, y: int):
@@ -279,8 +281,20 @@ def test_1x1():
     circuit = interconnect.circuit()
     with tempfile.TemporaryDirectory() as tempdir:
         filename = os.path.join(tempdir, "test1x1")
-        import magma
         magma.compile(filename, circuit, output="coreir-verilog")
+    # test routing for 1x1
+    compares = {}
+    for seed in {0, 1}:
+        routing_result = route_one_tile(interconnect, 0, 0,
+                                        ports=["data_in_16b", "data_out_16b"],
+                                        seed=seed)
+        # routing result ordering is the same as ports
+        assert len(routing_result) == 2
+        bs = interconnect.get_route_bitstream(routing_result)
+        assert len(bs) > 0
+        compares[seed] = bs
+    for i in range(2):
+        assert compares[0][i] != compares[1][i]
 
 
 def test_dump_pnr():
