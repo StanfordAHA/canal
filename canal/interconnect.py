@@ -575,6 +575,8 @@ class Interconnect(generator.Generator):
         result = set()
         for y in range(self.y_min, self.y_max + 1):  # y_max is inclusive
             for x in range(self.x_min, self.x_max + 1): # x_max is inclusive
+                if (x, y) not in self.tile_circuits:
+                    continue
                 tile = self.tile_circuits[(x, y)]
                 for idx, feat in enumerate(tile.features()):
                     if hasattr(feat, "skip_compression") and \
