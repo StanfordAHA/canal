@@ -1,8 +1,10 @@
+import abc
 import dataclasses
 import enum
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 from canal.graph.node import Node
+from canal.graph.port import PortNode
 from canal.graph.sb import SwitchBoxSide, SwitchBoxIO, SwitchBoxConnectionType
 from canal.graph.sb_container import SwitchBox
 from canal.graph.tile import Tile
@@ -13,11 +15,29 @@ class InterconnectPolicy(enum.Enum):
     IGNORE = enum.auto()
 
 
+class InterconnectCore(abc.ABC):
+    @abc.abstractmethod
+    def inputs(self) -> List[Tuple[int, str]]:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def outputs(self) -> List[Tuple[int, str]]:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def get_port_ref(self, port_name: str):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def __eq__(self, other):
+        raise NotImplementedError()
+
+
 @dataclasses.dataclass
 class InterconnectGraph:
     bit_width: int
 
-    def __post_init__(self, bit_width: int):
+    def __post_init__(self):
         self._tiles: Dict[Tuple[int, int], Tile] = {}
         self._switch_ids: Dict[int, SwitchBox] = {}
         # This is a 2D grid designed to support fast queries with irregular tile
@@ -83,7 +103,7 @@ class InterconnectGraph:
         return width, height
 
     def set_core_connection(self, x: int, y: int, port_name: str,
-                            connection_type: List[SBConnectionType]):
+                            connection_type: List[SwitchBoxConnectionType]):
         tile = self.get_tile(x, y)
         if tile is None:  # do nothing if emtpy
             return
@@ -99,10 +119,10 @@ class InterconnectGraph:
             # Construct the connection types.
             switch = tile.switchbox
             num_track = switch.num_track
-            connections: List[SBConnectionType] = []
+            connections: List[SwitchBoxConnectionType] = []
             for track in range(num_track):
                 for side, io in connection_type:
-                    connections.append(SBConnectionType(side, track, io))
+                    connections.append(SwitchBoxConnectionType(side, track, io))
             self.set_core_connection(x, y, port_name, connections)
 
     def set_inter_core_connection(self, from_name: str, to_name: str):
@@ -127,8 +147,7 @@ class InterconnectGraph:
             return None
         return tile.get_sb(side, track, io)
 
-    def get_port(self, x: int, y: int,
-                 port_name: str) -> Union[PortNode, None]:
+    def get_port(self, x: int, y: int, port_name: str) -> Optional[PortNode]:
         tile = self.get_tile(x, y)
         if tile is not None:
             return tile.get_port(port_name)
@@ -195,7 +214,7 @@ class InterconnectGraph:
                 #   1. tile_to is empty -> apply policy
                 #   2. tile_to is a reference -> apply policy
                 if not self.is_original_tile(x + expected_length, y):
-                    if policy == InterconnectPolicy.Ignore:
+                    if policy == InterconnectPolicy.IGNORE:
                         continue
                     # Find another tile longer than expected length that's
                     # within the range. Because, at this point we already know
@@ -234,7 +253,7 @@ class InterconnectGraph:
                 #   1. tile_to is empty -> apply policy
                 #   2. tile_to is a reference -> apply policy
                 if not self.is_original_tile(x, y + expected_length):
-                    if policy == InterconnectPolicy.Ignore:
+                    if policy == InterconnectPolicy.IGNORE:
                         continue
                     y_ = y + expected_length
                     while y_ < y1:

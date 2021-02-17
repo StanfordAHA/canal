@@ -11,18 +11,18 @@ class CoreConnectionType(enum.Flag):
 
 
 class InterconnectCore(abc.ABC):
-    @abstractmethod
+    @abc.abstractmethod
     def inputs(self) -> List[Tuple[int, str]]:
-        pass
+        raise NotImplementedError()
 
-    @abstractmethod
+    @abc.abstractmethod
     def outputs(self) -> List[Tuple[int, str]]:
-        pass
+        raise NotImplementedError()
 
-    @abstractmethod
+    @abc.abstractmethod
     def get_port_ref(self, port_name: str):
-        pass
+        raise NotImplementedError()
 
-    @abstractmethod
+    @abc.abstractmethod
     def __eq__(self, other):
-        pass
+        raise NotImplementedError()

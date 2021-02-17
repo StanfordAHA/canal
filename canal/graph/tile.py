@@ -1,5 +1,6 @@
 import dataclasses
-from typing import Dict, Optional, Union
+from ordered_set import OrderedSet
+from typing import Dict, List, Optional, Tuple, Union
 
 from canal.graph.core import InterconnectCore, CoreConnectionType
 from canal.graph.port import PortNode
@@ -18,9 +19,10 @@ class Tile:
 
     def __post_init__(self):
         # Create a copy of switch box because the nodes have to be created.
-        self.switchbox: SwitchBox = SwitchBox(x, y, switchbox.num_track,
-                                              switchbox.width,
-                                              switchbox.internal_wires)
+        self.switchbox: SwitchBox = SwitchBox(self.x, self.y,
+                                              self.switchbox.num_track,
+                                              self.switchbox.width,
+                                              self.switchbox.internal_wires)
 
         self.ports: Dict[str, PortNode] = {}
         self.inputs = OrderedSet()
@@ -72,8 +74,8 @@ class Tile:
             for width, port_name in outputs:
                 if width == self.track_width:
                     self.outputs.add(port_name)
-                            self.ports[port_name] = PortNode(
-                                port_name, self.x, self.y, width)
+                    self.ports[port_name] = PortNode(
+                        port_name, self.x, self.y, width)
                     self._port_core[port_name] = core
 
     def add_additional_core(self, core: InterconnectCore,
@@ -118,11 +120,11 @@ class Tile:
         return str(self)
 
     def get_sb(self, side: SwitchBoxSide, track: int,
-               io: SwitchBoxIO) -> Union[SwitchBoxNode, None]:
+               io: SwitchBoxIO) -> Optional[SwitchBoxNode]:
         return self.switchbox.get_sb(side, track, io)
 
     def set_core_connection(self, port_name: str,
-                            connection_type: List[SBConnectionType]):
+                            connection_type: List[SwitchBoxConnectionType]):
         # Make sure it's an input port.
         is_input = self.core_has_input(port_name)
         is_output = self.core_has_output(port_name)

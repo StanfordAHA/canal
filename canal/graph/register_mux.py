@@ -1,7 +1,7 @@
 import dataclasses
 
 from canal.graph.node import Node
-from canal.graph.switch_box import SwitchBoxSide
+from canal.graph.sb import SwitchBoxSide
 
 
 @dataclasses.dataclass

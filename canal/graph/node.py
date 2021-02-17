@@ -1,6 +1,8 @@
 import abc
 import dataclasses
 import enum
+from ordered_set import OrderedSet
+from typing import Iterator, List
 
 
 @enum.unique
@@ -11,7 +13,7 @@ class NodeType(enum.Enum):
     GENERIC = enum.auto()
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass
 class Node(abc.ABC):
     x: int
     y: int
@@ -50,13 +52,13 @@ class Node(abc.ABC):
     def __len__(self):
         return len(self._neighbors)
 
-    @abstractmethod
+    @abc.abstractmethod
     def __repr__(self):
-        pass
+        raise NotImplementedError()
 
-    @abstractmethod
+    @abc.abstractmethod
     def node_str(self):
-        pass
+        raise NotImplementedError()
 
     def clear(self):
         self._neighbors.clear()

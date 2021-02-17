@@ -1,8 +1,8 @@
 import dataclasses
 from typing import Dict, List, Optional, Tuple
 
-from canal.graph.sb improt SwitchBoxSide, SwitchBoxIO
-from canal.graph.register_mux import RegisterMux
+from canal.graph.sb import SwitchBoxSide, SwitchBoxIO, SwitchBoxNode
+from canal.graph.register_mux import RegisterMuxNode
 
 
 InternalWiresType = List[Tuple[int, SwitchBoxSide, int, SwitchBoxSide]]
@@ -19,16 +19,23 @@ class SwitchBox:
     def __post_init__(self):
         self.id = 0
         self._sbs: List[List[List[SwitchBoxNode]]] = ([
-            [[SwitchBoxNode(self.x, self.y, track, width, side, io)
-              for track in range(self.num_track)] for io in SwitchBoxIO]
+            [[None for track in range(self.num_track)] for io in SwitchBoxIO]
             for side in SwitchBoxSide
         ])
+
+
+        for side in SwitchBoxSide:
+            for io in SwitchBoxIO:
+                for track in range(self.num_track):
+                    sb = SwitchBoxNode(
+                        self.x, self.y, track, self.width, side, io)
+                    self._sbs[side.value][io.value][track] = sb
 
         # Assign internal wiring, with order in -> out.
         for track_src, side_src, track_dst, side_dst in self.internal_wires:
             src = self._sbs[side_src.value][SwitchBoxIO.SB_IN.value][track_src]
             dst = self._sbs[side_dst.value][SwitchBoxIO.SB_OUT.value][track_dst]
-            sb_src.add_edge(sb_dst, 0)  # internal connection has no delay
+            src.add_edge(dst, 0)  # internal connection has no delay
 
         # Store the nodes for pipeline registers.
         self.registers: Dict[str, RegisterNode] = {}
@@ -50,8 +57,6 @@ class SwitchBox:
         return f"SWITCH {self.width} {self.id} {self.num_track}"
 
     def __getitem__(self, key: Tuple[SwitchBoxSide, int, SwitchBoxIO]):
-        if not isinstance(key, Tuple[SwitchBoxSide, int, SwitchBoxIO]):
-            raise TypeError(key)
         side, track, io = key
         return self._sbs[side.value][io.value][track]
 

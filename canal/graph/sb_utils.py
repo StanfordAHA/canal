@@ -110,17 +110,17 @@ def get_imran_sb_wires(num_tracks: int) -> InternalWiresType:
 
 class DisjointSwitchBox(SwitchBox):
     def __init__(self, x: int, y: int, num_track: int, width: int):
-        internal_wires = SwitchBoxHelper.get_disjoint_sb_wires(num_track)
+        internal_wires = get_disjoint_sb_wires(num_track)
         super().__init__(x, y, num_track, width, internal_wires)
 
 
 class WiltonSwitchBox(SwitchBox):
     def __init__(self, x: int, y: int, num_track: int, width: int):
-        internal_wires = SwitchBoxHelper.get_wilton_sb_wires(num_track)
+        internal_wires = get_wilton_sb_wires(num_track)
         super().__init__(x, y, num_track, width, internal_wires)
 
 
 class ImranSwitchBox(SwitchBox):
     def __init__(self, x: int, y: int, num_track: int, width: int):
-        internal_wires = SwitchBoxHelper.get_imran_sb_wires(num_track)
+        internal_wires = get_imran_sb_wires(num_track)
         super().__init__(x, y, num_track, width, internal_wires)
