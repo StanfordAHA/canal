@@ -1,9 +1,23 @@
 import magma as m
 from gemstone.configurable import Configurable
 
+from canal.graph.node import Node
+
 
 class InterconnectConfigurable(Configurable):
-    pass
+    def _add_mux_config(self, node: Node, mux: m.Circuit):
+        MuxT = type(mux)
+        if isinstance(MuxT, m.Wire):
+            return None
+        assert isinstance(MuxT, m.Mux):
+        config_name = _make_mux_sel_name(node)
+        self.add_config(config_name, len(mux.S))
+        mux.S @= self._register_set.get_value(config_name)
+        return config_name
+
+
+def make_mux_sel_name(node: Node):
+    return f"{make_name(str(node))}_sel"
 
 
 def make_name(name: str):
@@ -14,10 +28,6 @@ def make_name(name: str):
     if name[-1] == "_":
         name = name[:-1]
     return name
-
-
-def make_mux_sel_name(node: Node):
-    return f"{make_name(str(node))}_sel"
 
 
 def make_mux_or_wire(node: Node):
