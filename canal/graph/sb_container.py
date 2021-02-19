@@ -1,4 +1,5 @@
 import dataclasses
+import itertools
 from typing import Dict, List, Optional, Tuple
 
 from canal.graph.sb import SwitchBoxSide, SwitchBoxIO, SwitchBoxNode
@@ -8,28 +9,36 @@ from canal.graph.register_mux import RegisterMuxNode
 InternalWiresType = List[Tuple[int, SwitchBoxSide, int, SwitchBoxSide]]
 
 
+def _iteration_domain(num_tracks):
+    return itertools.product(SwitchBoxSide, SwitchBoxIO, range(num_tracks))
+
+
+def _make_switch_box_nodes(num_tracks, width, x, y):
+    nodes = ([
+        [[None for track in range(num_tracks)] for io in SwitchBoxIO]
+        for side in SwitchBoxSide
+    ])
+    for side, io, track in _iteration_domain(num_tracks):
+        nodes[side.value][io.value][track] = SwitchBoxNode(
+            x, y, track, width, side, io)
+    return nodes
+
+
 @dataclasses.dataclass
 class SwitchBox:
     x: int
     y: int
-    num_track: int
+    num_tracks: int
     width: int
     internal_wires: InternalWiresType
 
     def __post_init__(self):
         self.id = 0
-        self._sbs: List[List[List[SwitchBoxNode]]] = ([
-            [[None for track in range(self.num_track)] for io in SwitchBoxIO]
-            for side in SwitchBoxSide
-        ])
 
-
-        for side in SwitchBoxSide:
-            for io in SwitchBoxIO:
-                for track in range(self.num_track):
-                    sb = SwitchBoxNode(
-                        self.x, self.y, track, self.width, side, io)
-                    self._sbs[side.value][io.value][track] = sb
+        # Initialize switch box nodes.
+        TSwitchBoxNodeList = List[List[List[SwitchBoxNode]]]
+        self._sbs: TSwitchBoxNodeList = _make_switch_box_nodes(
+            self.num_tracks, self.width, self.x, self.y)
 
         # Assign internal wiring, with order in -> out.
         for track_src, side_src, track_dst, side_dst in self.internal_wires:
@@ -39,7 +48,7 @@ class SwitchBox:
 
         # Store the nodes for pipeline registers.
         self.registers: Dict[str, RegisterNode] = {}
-        self.reg_muxs: Dict[str, RegisterMuxNode] = {}
+        self.reg_muxes: Dict[str, RegisterMuxNode] = {}
 
     def __eq__(self, other):
         if not isinstance(other, SwitchBox):
@@ -54,7 +63,7 @@ class SwitchBox:
         return True
 
     def __repr__(self):
-        return f"SWITCH {self.width} {self.id} {self.num_track}"
+        return f"SWITCH {self.width} {self.id} {self.num_tracks}"
 
     def __getitem__(self, key: Tuple[SwitchBoxSide, int, SwitchBoxIO]):
         side, track, io = key
@@ -62,12 +71,11 @@ class SwitchBox:
 
     def get_all_sbs(self) -> List[SwitchBoxNode]:
         result = []
-        for track in range(self.num_track):
-            for side in SwitchBoxSide:
-                for io in SwitchBoxIO:
-                    sb = self.get_sb(side, track, io)
-                    if sb is not None:
-                        result.append(sb)
+        for side, io, track in _iteration_domain(self.num_tracks):
+            sb = self.get_sb(side, track, io)
+            if sb is None:
+                continue
+            result.append(sb)
         return result
 
     def get_sb(self, side: SwitchBoxSide, track: int,
@@ -127,22 +135,22 @@ class SwitchBox:
             reg_mux.add_edge(n, cost)
         # Finally, add to the tile level.
         assert reg.name not in self.registers
-        assert reg_mux.name not in self.reg_muxs
+        assert reg_mux.name not in self.reg_muxes
         self.registers[reg.name] = reg
-        self.reg_muxs[reg_mux.name] = reg_mux
+        self.reg_muxes[reg_mux.name] = reg_mux
 
     def clone(self):
         clone = SwitchBox(
-            self.x, self.y, self.num_track, self.width, self.internal_wires)
-        # Clone other regs and reg muxs.
+            self.x, self.y, self.num_tracks, self.width, self.internal_wires)
+        # Clone other regs and reg muxes.
         for reg_name, reg_node in self.registers.items():
             clone.registers[reg_name] = RegisterNode(reg_node.name,
                                                      reg_node.x,
                                                      reg_node.y,
                                                      reg_node.track,
                                                      reg_node.width)
-        for mux_name, mux_node in self.reg_muxs.items():
-            clone.reg_muxs[mux_name] = RegisterMuxNode(mux_node.x,
+        for mux_name, mux_node in self.reg_muxes.items():
+            clone.reg_muxes[mux_name] = RegisterMuxNode(mux_node.x,
                                                        mux_node.y,
                                                        mux_node.track,
                                                        mux_node.width,
