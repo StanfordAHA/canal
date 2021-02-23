@@ -179,6 +179,6 @@ class SB(InterconnectConfigurable):
         for reg_node, reg in self.registers.values():
             reg_mux = list(reg_node)[0]
             config_name = get_mux_sel_name(reg_mux)
-            config_value = self._register_set.get_value(config_name)
+            config_value = self._get_value(config_name)
             index = reg_mux.get_conn_in().index(reg_node)
             reg.CE @= nstall & (config_value == index)

@@ -8,11 +8,15 @@ class InterconnectConfigurable(Configurable):
     def _add_mux_config(self, node: Node, mux: m.Circuit):
         MuxT = type(mux)
         if isinstance(MuxT, m.Wire):
-            return None
-        assert isinstance(MuxT, m.Mux):
-        config_name = _make_mux_sel_name(node)
-        self.add_config(config_name, len(mux.S))
-        mux.S @= self._register_set.get_value(config_name)
+           return None
+        assert isinstance(MuxT, m.Mux)
+        config_name = make_mux_sel_name(node)
+        size = 1 if isinstance(mux.S, m.Bit) else len(mux.S)
+        self.add_config(config_name, size)
+        config_value = self._get_value(config_name)
+        if size == 1:
+            config_value = config_value[0]
+        mux.S @= config_value
         return config_name
 
 
@@ -32,8 +36,12 @@ def make_name(name: str):
 
 def make_mux_or_wire(node: Node):
     height = len(node.get_conn_in())
-    node_name = create_name(str(node))
+    node_name = make_name(str(node))
     if height <= 1:
         return m.Wire(m.Bits[node.width])(name=f"WIRE_{node_name}")
-    name = node_name if "MUX" in node_name else f"MUX_{node_name}"
-    return m.Mux(height, m.Bits[node.width])(name=name)
+    inst_name = node_name if "MUX" in node_name else f"MUX_{node_name}"
+    inst = m.Mux(height, m.Bits[node.width])(name=inst_name)
+    # NOTE(rsetaluri): This is a hack!
+    inst.I = m.Array[height, m.Bits[node.width]](
+        list(getattr(inst, f"I{i}") for i in range(height)))
+    return inst

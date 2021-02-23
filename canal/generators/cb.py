@@ -13,17 +13,13 @@ class CB(InterconnectConfigurable):
         super().__init__(name, config_addr_width, config_data_width)
 
         self.node = node
-        self.mux = make_mux_or_wire(self.node)
+        with self._open():
+           self.mux = make_mux_or_wire(self.node)
 
-        I, O = self._add_ports(I=type(self.mux.I),
-                               O=type(self.mux.O))
+        I, O = self._add_ports(I=m.In(type(self.mux.I)),
+                               O=m.Out(type(self.mux.O)))
+
         self.mux.I @= I
         O @= self.mux.O
 
-        MuxT = type(self.mux)
-        if isinstance(MuxT, m.Mux):
-            config_name = make_mux_sel_name(self.node)
-            self.add_config(config_name, len(self.mux.S))
-            self.mux.S @= self._register_set.get_value(config_name)
-        else:
-            assert isinstance(MuxT, m.Wire)
+        self._add_mux_config(self.node, self.mux)
