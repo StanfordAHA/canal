@@ -10,6 +10,7 @@ class RegisterMuxNode(Node):
     side: SwitchBoxSide
 
     def __post_init__(self):
+        super().__post_init__()
         self.name = f"{int(self.side.value)}_{self.track}"
 
     def node_str(self):

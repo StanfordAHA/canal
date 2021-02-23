@@ -23,8 +23,3 @@ class CB(InterconnectConfigurable):
         O @= self.mux.O
 
         self._add_mux_config(self.node, self.mux)
-
-    # TODO(rsetaluri): Get rid of this once in magma:master.
-    def _open(self):
-        from magma.circuit import _DefinitionContextManager
-        return _DefinitionContextManager(self._context)

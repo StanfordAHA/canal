@@ -2,8 +2,9 @@ import dataclasses
 import itertools
 from typing import Dict, List, Optional, Tuple
 
-from canal.graph.sb import SwitchBoxSide, SwitchBoxIO, SwitchBoxNode
+from canal.graph.register import RegisterNode
 from canal.graph.register_mux import RegisterMuxNode
+from canal.graph.sb import SwitchBoxSide, SwitchBoxIO, SwitchBoxNode
 
 
 InternalWiresType = List[Tuple[int, SwitchBoxSide, int, SwitchBoxSide]]
@@ -20,7 +21,7 @@ def _make_switch_box_nodes(num_tracks, width, x, y):
     ])
     for side, io, track in _iteration_domain(num_tracks):
         nodes[side.value][io.value][track] = SwitchBoxNode(
-            x, y, track, width, side, io)
+            x=x, y=y, width=width, track=track, side=side, io=io)
     return nodes
 
 
@@ -122,9 +123,10 @@ class SwitchBox:
         for n in neighbors:
             node.remove_edge(n)
         # Create a register mux node and a register node.
-        reg = RegisterNode(
-            f"T{track}_{side.name}", node.x, node.y, track, node.width)
-        reg_mux = RegisterMuxNode(node.x, node.y, track, node.width, side)
+        reg = RegisterNode(x=node.x, y=node.y, width=node.width,
+                           name=f"T{track}_{side.name}", track=track)
+        reg_mux = RegisterMuxNode(
+            x=node.x, y=node.y, width=node.width, track=track, side=side)
         # Connect node to them.
         node.add_edge(reg)
         node.add_edge(reg_mux)

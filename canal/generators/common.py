@@ -19,6 +19,11 @@ class InterconnectConfigurable(Configurable):
         mux.S @= config_value
         return config_name
 
+    # TODO(rsetaluri): Get rid of this once in magma:master.
+    def _open(self):
+        from magma.circuit import _DefinitionContextManager
+        return _DefinitionContextManager(self._context)
+
 
 def make_mux_sel_name(node: Node):
     return f"{make_name(str(node))}_sel"
