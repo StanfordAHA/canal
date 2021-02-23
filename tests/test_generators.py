@@ -37,7 +37,7 @@ def _find_reg_mux_node(node: Node) -> Union[Tuple[None, None],
             continue
         assert len(neighbor) == 1
         reg_mux = list(neighbor)[0]
-        return neigbhor, reg_mux
+        return neighbor, reg_mux
     return None, None
 
 
@@ -112,8 +112,7 @@ def test_sb(num_tracks: int, bit_width: int, TSwitchBox: type,
 
     # Generate addresses based on mux names, which is used to sort the
     # addresses.
-    config_names = list(builder.registers.keys())
-    config_names.sort()
+    config_names = sorted(builder.get_configs())
 
     # Some of the sb nodes may turn into a pass-through wire; we still need to
     # test them. We generate pairs of (config data, expected value). If it's a
@@ -143,7 +142,7 @@ def test_sb(num_tracks: int, bit_width: int, TSwitchBox: type,
                 index = connected_sb.get_conn_in().index(sb)
                 entry.append(builder.get_config_data(mux_sel_name, index))
                 # Also configure the register, if connected.
-                reg_node, reg_mux_node = find_reg_mux_node(connected_sb)
+                reg_node, reg_mux_node = _find_reg_mux_node(connected_sb)
                 if reg_mux_node is not None:
                     mux_sel_name = make_mux_sel_name(reg_mux_node)
                     assert mux_sel_name in config_names
@@ -158,9 +157,9 @@ def test_sb(num_tracks: int, bit_width: int, TSwitchBox: type,
                                   fault.random.random_bv(bit_width)))
                 test_data.append(entry)
 
-    # Compress the config data.
-    for i in range(len(config_data)):
-        config_data[i] = compress_config_data(config_data[i])
+    # # Compress the config data.
+    # for i in range(len(config_data)):
+    #     config_data[i] = compress_config_data(config_data[i])
 
     # Poke and test, without registers configured.
     assert len(config_data) == len(test_data)
