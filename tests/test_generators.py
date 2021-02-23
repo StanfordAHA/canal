@@ -4,7 +4,7 @@ from typing import Tuple, Union
 
 import fault
 import fault.random
-from gemstone import BasicTester
+from gemstone import BasicTester, compress_config_data
 from hwtypes import BitVector
 import magma as m
 
@@ -82,13 +82,12 @@ def test_cb(num_tracks: int, bit_width: int):
                                flags=["-Wno-fatal"])
 
 
-@pytest.mark.parametrize('num_tracks', [2, ])#5])
-@pytest.mark.parametrize('bit_width', [1, ])#16])
+@pytest.mark.parametrize('num_tracks', [2, 5])
+@pytest.mark.parametrize('bit_width', [1, 16])
 @pytest.mark.parametrize("TSwitchBox", [DisjointSwitchBox,
-                                        #WiltonSwitchBox,
-                                        #ImranSwitchBox
-])
-@pytest.mark.parametrize("reg", [[True, 4], ])#[True, 8], [False, 2]])
+                                        WiltonSwitchBox,
+                                        ImranSwitchBox])
+@pytest.mark.parametrize("reg", [[True, 4], [True, 8], [False, 2]])
 def test_sb(num_tracks: int, bit_width: int, TSwitchBox: type,
             reg: Tuple[bool, int]):
     """Tests whether the generated circuit matches the graph representation.
@@ -157,9 +156,9 @@ def test_sb(num_tracks: int, bit_width: int, TSwitchBox: type,
                                   fault.random.random_bv(bit_width)))
                 test_data.append(entry)
 
-    # # Compress the config data.
-    # for i in range(len(config_data)):
-    #     config_data[i] = compress_config_data(config_data[i])
+    # Compress the config data.
+    for i in range(len(config_data)):
+        config_data[i] = compress_config_data(config_data[i])
 
     # Poke and test, without registers configured.
     assert len(config_data) == len(test_data)
