@@ -538,3 +538,135 @@ def test_tile(num_tracks: int, add_additional_core: bool):
                                magma_output="coreir-verilog",
                                directory=tempdir,
                                flags=["-Wno-fatal"])
+
+
+def test_double_buffer():
+    addr_width = 8
+    data_width = 32
+    bit_widths = [1, 16]
+    num_tracks = 5
+    tile_id_width = 16
+    x = 0
+    y = 0
+
+    dummy_core = DummyCore()
+    core = CoreInterface(dummy_core)
+
+    tiles: Dict[int, Tile] = {}
+
+    for bit_width in bit_widths:
+        # we use disjoint switch here
+        switchbox = DisjointSwitchBox(x, y, num_tracks, bit_width)
+        tile = Tile(x, y, bit_width, switchbox)
+        tiles[bit_width] = tile
+
+    # set the core and core connection
+    # here all the input ports are connect to SB_IN and all output ports are
+    # connected to SB_OUT
+    input_connections = []
+    for track in range(num_tracks):
+        for side in SwitchBoxSide:
+            input_connections.append(SBConnectionType(side, track,
+                                                      SwitchBoxIO.SB_IN))
+    output_connections = []
+    for track in range(num_tracks):
+        for side in SwitchBoxSide:
+            output_connections.append(SBConnectionType(side, track,
+                                                       SwitchBoxIO.SB_OUT))
+
+    for bit_width, tile in tiles.items():
+        tile.set_core(core)
+        input_port_name = f"data_in_{bit_width}b"
+        output_port_name = f"data_out_{bit_width}b"
+
+        tile.set_core_connection(input_port_name, input_connections)
+        tile.set_core_connection(output_port_name, output_connections)
+
+    tile_circuit = TileCircuit(tiles, addr_width, data_width,
+                               tile_id_width=tile_id_width,
+                               double_buffer=True)
+    tile_circuit.finalize()
+    circuit = tile_circuit.circuit()
+    bit_width = 16
+    # find corresponding sb
+    sb_circuit: SB = None
+    for _, sb in tile_circuit.sbs.items():
+        if sb.switchbox.width == bit_width:
+            sb_circuit = sb
+            break
+    assert sb_circuit is not None
+    # find that connection box
+    input_port_name = f"data_in_{bit_width}b"
+
+    cb_circuit: CB = None
+    for _, cb in tile_circuit.cbs.items():
+        if cb.node.name == input_port_name:
+            cb_circuit = cb
+            break
+    assert cb_circuit
+
+    output_port_name = f"data_out_{bit_width}b"
+    out_port_node = tile_circuit.tiles[bit_width].ports[output_port_name]
+    in_port_node = tile_circuit.tiles[bit_width].ports[input_port_name]
+
+    input_1 = sb_circuit.switchbox.get_sb(SwitchBoxSide.NORTH, 0, SwitchBoxIO.SB_IN)
+    input_1_name = create_name(str(input_1))
+    input_2 = sb_circuit.switchbox.get_sb(SwitchBoxSide.EAST, 1, SwitchBoxIO.SB_IN)
+    input_2_name = create_name(str(input_2))
+    output_sb = sb_circuit.switchbox.get_sb(SwitchBoxSide.SOUTH, 2, SwitchBoxIO.SB_OUT)
+    output_name = create_name(str(output_sb))
+
+    input_1_bitstream = tile_circuit.get_route_bitstream_config(input_1, in_port_node)
+    input_2_bitstream = tile_circuit.get_route_bitstream_config(input_2, in_port_node)
+    output_bitstream = tile_circuit.get_route_bitstream_config(out_port_node, output_sb)
+    # notice that both of them will be configured using the double buffer scheme
+
+    def get_config_data(config_data, reg_data):
+        for reg_addr, feat_addr, config_value in reg_data:
+            reg_addr = reg_addr << tile_circuit.feature_config_slice.start
+            feat_addr = feat_addr << tile_circuit.tile_id_width
+            addr = reg_addr | feat_addr
+            addr = BitVector[data_width](addr) | BitVector[data_width](0)
+            config_data.append((addr, config_value))
+
+    input1_config_data = []
+    input2_config_data = []
+    get_config_data(input1_config_data, [input_1_bitstream, output_bitstream])
+    get_config_data(input2_config_data, [input_2_bitstream, output_bitstream])
+    input1_config_data = compress_config_data(input1_config_data)
+    input2_config_data = compress_config_data(input2_config_data)
+
+    tester = BasicTester(circuit, circuit.clk, circuit.reset)
+    tester.poke(circuit.tile_id, 0)
+
+    for addr, config_value in input1_config_data:
+        tester.configure(addr, config_value)
+        tester.config_read(addr)
+        tester.eval()
+        tester.expect(circuit.read_config_data, config_value)
+
+    # configure the double buffer register
+    tester.poke(circuit.config_db, 1)
+    for addr, config_value in input2_config_data:
+        tester.configure(addr, config_value)
+        tester.config_read(addr)
+        tester.eval()
+        tester.expect(circuit.read_config_data, config_value)
+
+    # the route should still be input 1
+    port = circuit.interface.ports[input_1_name]
+    tester.poke(port, 42)
+    port = circuit.interface.ports[input_2_name]
+    tester.poke(port, 43)
+    tester.eval()
+    tester.expect(circuit.interface.ports[output_name], 42)
+    # now use the double buffer
+    tester.poke(circuit.use_db, 1)
+    tester.eval()
+    tester.expect(circuit.interface.ports[output_name], 43)
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        tester.compile_and_run(target="verilator",
+                               magma_output="coreir-verilog",
+                               directory=tempdir,
+                               flags=["-Wno-fatal", "--trace"])
