@@ -609,16 +609,22 @@ def test_double_buffer():
     out_port_node = tile_circuit.tiles[bit_width].ports[output_port_name]
     in_port_node = tile_circuit.tiles[bit_width].ports[input_port_name]
 
-    input_1 = sb_circuit.switchbox.get_sb(SwitchBoxSide.NORTH, 0, SwitchBoxIO.SB_IN)
+    input_1 = sb_circuit.switchbox.get_sb(SwitchBoxSide.NORTH, 0,
+                                          SwitchBoxIO.SB_IN)
     input_1_name = create_name(str(input_1))
-    input_2 = sb_circuit.switchbox.get_sb(SwitchBoxSide.EAST, 1, SwitchBoxIO.SB_IN)
+    input_2 = sb_circuit.switchbox.get_sb(SwitchBoxSide.EAST, 1,
+                                          SwitchBoxIO.SB_IN)
     input_2_name = create_name(str(input_2))
-    output_sb = sb_circuit.switchbox.get_sb(SwitchBoxSide.SOUTH, 2, SwitchBoxIO.SB_OUT)
+    output_sb = sb_circuit.switchbox.get_sb(SwitchBoxSide.SOUTH, 2,
+                                            SwitchBoxIO.SB_OUT)
     output_name = create_name(str(output_sb))
 
-    input_1_bitstream = tile_circuit.get_route_bitstream_config(input_1, in_port_node)
-    input_2_bitstream = tile_circuit.get_route_bitstream_config(input_2, in_port_node)
-    output_bitstream = tile_circuit.get_route_bitstream_config(out_port_node, output_sb)
+    input_1_bitstream = tile_circuit.get_route_bitstream_config(input_1,
+                                                                in_port_node)
+    input_2_bitstream = tile_circuit.get_route_bitstream_config(input_2,
+                                                                in_port_node)
+    output_bitstream = tile_circuit.get_route_bitstream_config(out_port_node,
+                                                               output_sb)
     # notice that both of them will be configured using the double buffer scheme
 
     def get_config_data(config_data, reg_data):
