@@ -111,6 +111,9 @@ class CB(InterconnectConfigurable):
             self.ports.pop("clk")
             self.ports.pop("reset")
             self.ports.pop("read_config_data")
+            if self.double_buffer:
+                self.ports.pop("use_db")
+                self.ports.pop("config_db")
 
         self._setup_config()
 
