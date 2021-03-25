@@ -254,7 +254,8 @@ def test_interconnect(num_tracks: int, chip_size: int,
     #     check_graph_isomorphic(ics, rtl_path)
 
 
-def test_1x1():
+@pytest.mark.parametrize("double_buffer", [True, False])
+def test_1x1(double_buffer):
     ics = {}
     in_conn = []
     out_conn = []
@@ -275,7 +276,7 @@ def test_1x1():
                                          SwitchBoxType.Disjoint)
         ics[bit_width] = ic
     interconnect = Interconnect(ics, addr_width, data_width, 16,
-                                lift_ports=True)
+                                lift_ports=True, double_buffer=double_buffer)
     interconnect.finalize()
     apply_global_fanout_wiring(interconnect)
     circuit = interconnect.circuit()

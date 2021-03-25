@@ -23,7 +23,8 @@ class Interconnect(generator.Generator):
                  config_addr_width: int, config_data_width: int,
                  tile_id_width: int,
                  stall_signal_width: int = 4,
-                 lift_ports=False):
+                 lift_ports=False,
+                 double_buffer: bool = False):
         super().__init__()
 
         self.__interface = {}
@@ -37,6 +38,8 @@ class Interconnect(generator.Generator):
 
         self.__tiles: Dict[Tuple[int, int], Dict[int, Tile]] = {}
         self.tile_circuits: Dict[Tuple[int, int], TileCircuit] = {}
+
+        self.double_buffer = double_buffer
 
         # loop through the grid and create tile circuits
         # first find all the coordinates
@@ -75,9 +78,10 @@ class Interconnect(generator.Generator):
 
         # create individual tile circuits
         for coord, tiles in self.__tiles.items():
-            self.tile_circuits[coord] =\
+            self.tile_circuits[coord] = \
                 TileCircuit(tiles, config_addr_width, config_data_width,
-                            stall_signal_width=stall_signal_width)
+                            stall_signal_width=stall_signal_width,
+                            double_buffer=self.double_buffer)
 
         # we need to deal with inter-tile connections now
         # we only limit mesh
@@ -322,6 +326,17 @@ class Interconnect(generator.Generator):
             clk=magma.In(magma.Clock),
             reset=magma.In(magma.AsyncReset),
             stall=magma.In(magma.Bits[stall_signal_width]))
+        if self.double_buffer:
+            self.add_ports(
+                config_db=magma.In(magma.Bit),
+                use_db=magma.In(magma.Bit)
+            )
+            return (self.ports.config.qualified_name(),
+                    self.ports.clk.qualified_name(),
+                    self.ports.reset.qualified_name(),
+                    self.ports.stall.qualified_name(),
+                    self.ports.config_db.qualified_name(),
+                    self.ports.use_db.qualified_name())
 
         return (self.ports.config.qualified_name(),
                 self.ports.clk.qualified_name(),
@@ -429,7 +444,7 @@ class Interconnect(generator.Generator):
         for core_name, tags in core_info.items():
             if not isinstance(tags, list):
                 tags = [tags]
-            for tag in tags:    # type: PnRTag
+            for tag in tags:  # type: PnRTag
                 tag_name = tag.tag_name
                 if core_name not in name_to_tag:
                     name_to_tag[core_name] = []
@@ -558,7 +573,8 @@ class Interconnect(generator.Generator):
                           self.config_data_width,
                           self.tile_id_width,
                           self.stall_signal_width,
-                          self.__lifted_ports)
+                          self.__lifted_ports,
+                          double_buffer=self.double_buffer)
         return ic
 
     def get_column(self, x: int):
@@ -574,7 +590,7 @@ class Interconnect(generator.Generator):
     def get_skip_addr(self):
         result = set()
         for y in range(self.y_min, self.y_max + 1):  # y_max is inclusive
-            for x in range(self.x_min, self.x_max + 1): # x_max is inclusive
+            for x in range(self.x_min, self.x_max + 1):  # x_max is inclusive
                 if (x, y) not in self.tile_circuits:
                     continue
                 tile = self.tile_circuits[(x, y)]
@@ -630,11 +646,13 @@ class Interconnect(generator.Generator):
     def get_top_input_port_by_coord(self, coord, bit_width):
         def predicate(port_name):
             return self.ports[port_name].base_type().is_input()
+
         return self.__get_top_port_by_coord(coord, bit_width, predicate)
 
     def get_top_output_port_by_coord(self, coord, bit_width):
         def predicate(port_name):
             return self.ports[port_name].base_type().is_output()
+
         return self.__get_top_port_by_coord(coord, bit_width, predicate)
 
     def get_graph(self, bit_width: int):

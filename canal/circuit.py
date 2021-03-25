@@ -77,12 +77,14 @@ class InterconnectConfigurable(Configurable):
 
 class CB(InterconnectConfigurable):
     def __init__(self, node: PortNode,
-                 config_addr_width: int, config_data_width: int):
+                 config_addr_width: int, config_data_width: int,
+                 double_buffer: bool = False):
         if not isinstance(node, PortNode):
             raise ValueError(node, PortNode.__name__)
         self.node: PortNode = node
 
-        super().__init__(config_addr_width, config_data_width)
+        super().__init__(config_addr_width, config_data_width,
+                         double_buffer=double_buffer)
 
         self.mux = create_mux(self.node)
 
@@ -109,6 +111,9 @@ class CB(InterconnectConfigurable):
             self.ports.pop("clk")
             self.ports.pop("reset")
             self.ports.pop("read_config_data")
+            if self.double_buffer:
+                self.ports.pop("use_db")
+                self.ports.pop("config_db")
 
         self._setup_config()
 
@@ -121,7 +126,8 @@ class CB(InterconnectConfigurable):
 class SB(InterconnectConfigurable):
     def __init__(self, switchbox: SwitchBox, config_addr_width: int,
                  config_data_width: int, core_name: str = "",
-                 stall_signal_width: int = 4):
+                 stall_signal_width: int = 4,
+                 double_buffer: bool = False):
         self.switchbox = switchbox
         self.__core_name = core_name
         self.stall_signal_width = stall_signal_width
@@ -132,7 +138,8 @@ class SB(InterconnectConfigurable):
 
         self.mux_name_to_node: Dict[str:, Node] = {}
 
-        super().__init__(config_addr_width, config_data_width)
+        super().__init__(config_addr_width, config_data_width,
+                         double_buffer=double_buffer)
 
         # turn off hashing because we control the hash by ourselves
         self.set_skip_hash(True)
@@ -306,7 +313,7 @@ class SB(InterconnectConfigurable):
 
     def name(self):
         return f"SB_ID{self.switchbox.id}_{self.switchbox.num_track}TRACKS_" \
-            f"B{self.switchbox.width}_{self.__core_name}"
+               f"B{self.switchbox.width}_{self.__core_name}"
 
     def __connect_sbs(self):
         # the principle is that it only connects to the nodes within
@@ -372,11 +379,13 @@ class TileCircuit(generator.Generator):
     We don't deal with stall signal here since it's not interconnect's job
     to handle that signal
     """
+
     def __init__(self, tiles: Dict[int, Tile],
                  config_addr_width: int, config_data_width: int,
                  tile_id_width: int = 16,
                  full_config_addr_width: int = 32,
-                 stall_signal_width: int = 4):
+                 stall_signal_width: int = 4,
+                 double_buffer: bool = False):
         super().__init__()
 
         # turn off hashing because we controls that hashing here
@@ -386,6 +395,8 @@ class TileCircuit(generator.Generator):
         self.config_addr_width = config_addr_width
         self.config_data_width = config_data_width
         self.tile_id_width = tile_id_width
+
+        self.double_buffer = double_buffer
 
         # compute config addr sizes
         # (16, 24)
@@ -448,7 +459,8 @@ class TileCircuit(generator.Generator):
                         continue
                     # create a CB
                     port_ref = tile.get_port_ref(port_node.name)
-                    cb = CB(port_node, config_addr_width, config_data_width)
+                    cb = CB(port_node, config_addr_width, config_data_width,
+                            double_buffer=self.double_buffer)
                     self.wire(cb.ports.O, port_ref)
                     self.cbs[port_name] = cb
                 else:
@@ -459,7 +471,8 @@ class TileCircuit(generator.Generator):
             # switch box time
             core_name = self.core.name() if self.core is not None else ""
             sb = SB(tile.switchbox, config_addr_width, config_data_width,
-                    core_name, stall_signal_width=stall_signal_width)
+                    core_name, stall_signal_width=stall_signal_width,
+                    double_buffer=self.double_buffer)
             self.sbs[sb.switchbox.width] = sb
 
         # lift all the sb ports up
@@ -680,6 +693,12 @@ class TileCircuit(generator.Generator):
             clk=magma.In(magma.Clock),
             read_config_data=magma.Out(magma.Bits[self.config_data_width])
         )
+        # double buffer ports
+        if self.double_buffer:
+            self.add_ports(
+                config_db=magma.In(magma.Bit),
+                use_db=magma.In(magma.Bit)
+            )
 
         features = self.features()
         num_features = len(features)
@@ -698,6 +717,10 @@ class TileCircuit(generator.Generator):
             self.wire(self.ports.config.config_data,
                       feature.ports.config.config_data)
             self.wire(self.ports.config.read, feature.ports.config.read)
+
+            if self.double_buffer and "config_db" in feature.ports:
+                self.wire(self.ports.config_db, feature.ports.config_db)
+                self.wire(self.ports.use_db, feature.ports.use_db)
 
         # Connect S input to config_addr.feature.
         self.wire(self.ports.config.config_addr[self.feature_addr_slice],
@@ -762,9 +785,9 @@ class TileCircuit(generator.Generator):
     def get_route_bitstream_config(self, src_node: Node, dst_node: Node):
         assert src_node.width == dst_node.width
         tile = self.tiles[src_node.width]
-        assert dst_node.x == tile.x and dst_node.y == tile.y,\
+        assert dst_node.x == tile.x and dst_node.y == tile.y, \
             f"{dst_node} is not in {tile}"
-        assert dst_node in src_node,\
+        assert dst_node in src_node, \
             f"{dst_node} is not connected to {src_node}"
 
         config_data = dst_node.get_conn_in().index(src_node)
