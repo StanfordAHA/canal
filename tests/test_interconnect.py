@@ -5,9 +5,10 @@ from gemstone.common.util import compress_config_data
 from canal.checker import check_graph_isomorphic
 from canal.pnr_io import route_one_tile
 from canal.interconnect import *
+from canal.cyclone import SwitchBoxHelper
 import tempfile
 import fault.random
-from canal.util import create_uniform_interconnect, SwitchBoxType, IOSide
+from canal.util import create_uniform_interconnect, SwitchBoxType, SwitchBox
 from canal.global_signal import apply_global_fanout_wiring, \
     apply_global_meso_wiring, apply_global_parallel_meso_wiring, \
     GlobalSignalWiring
@@ -379,3 +380,59 @@ def test_skip_addr():
     interconnect.tile_circuits[(1, 1)].core.skip_compression = True
     skip_addrs = interconnect.get_skip_addr()
     assert len(skip_addrs) == 256
+
+
+def test_uniform_uneven_sb():
+    track_length = 1
+
+    cores = {}
+    chip_size = 2
+    for x in range(chip_size):
+        for y in range(chip_size):
+            cores[(x, y)] = DummyCore()
+
+    def create_core(xx: int, yy: int):
+        return cores[(xx, yy)]
+
+    num_removed_track = 2
+
+    class ADisjointSwitchBox(SwitchBox):
+        def __init__(self, x: int, y: int, num_track: int, width: int):
+            internal_wires = SwitchBoxHelper.get_disjoint_sb_wires(num_track)
+            conns_to_remove = set()
+            remove_range = range(num_track - num_removed_track, num_track)
+            remove_side = {SwitchBoxSide.WEST, SwitchBoxSide.EAST}
+            for conn in internal_wires:
+                n1, n1_side, n2, n2_size = conn
+                if n1 in remove_range and n1_side in remove_side:
+                    conns_to_remove.add(conn)
+                if n2 in remove_range and n2_size in remove_side:
+                    conns_to_remove.add(conn)
+            for conn in conns_to_remove:
+                internal_wires.remove(conn)
+            super().__init__(x, y, num_track, width, internal_wires)
+
+    in_conn = [(SwitchBoxSide.WEST, SwitchBoxIO.SB_IN),
+               (SwitchBoxSide.WEST, SwitchBoxIO.SB_OUT)]
+    out_conn = [(SwitchBoxSide.EAST, SwitchBoxIO.SB_OUT),
+                (SwitchBoxSide.WEST, SwitchBoxIO.SB_OUT)]
+    ics = {}
+    for bit_width in [1, 16]:
+        ic = create_uniform_interconnect(2, 2, bit_width,
+                                         create_core,
+                                         {f"data_in_{bit_width}b": in_conn,
+                                          f"data_out_{bit_width}b": out_conn},
+                                         {track_length: 5},
+                                         ADisjointSwitchBox)
+        ics[bit_width] = ic
+    interconnect = Interconnect(ics, 8, 32, 16,
+                                lift_ports=True)
+    # finalize the design
+    interconnect.finalize()
+    apply_global_fanout_wiring(interconnect)
+    circuit = interconnect.circuit()
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        filename = os.path.join(tempdir, "test_build")
+        magma.compile(filename, circuit, output="coreir-verilog")
+        interconnect.dump_pnr(tempdir, "design")

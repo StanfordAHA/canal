@@ -304,10 +304,10 @@ class SwitchBox:
                track: int,
                io: SwitchBoxIO) -> Union[SwitchBoxNode, None]:
         # we may have removed the nodes
-        if track < len(self.__sbs[side.value][io.value]):
-            return self.__sbs[side.value][io.value][track]
-        else:
-            return None
+        for node in self.__sbs[side.value][io.value]:
+            if node.track == track:
+                return node
+        return None
 
     def remove_side_sbs(self, side: SwitchBoxSide, io: SwitchBoxIO):
         # first remove the connections and nodes
@@ -892,7 +892,9 @@ class InterconnectGraph:
         sb_from = tile_from.get_sb(side, track, SwitchBoxIO.SB_OUT)
         sb_to = tile_to.get_sb(SwitchBoxSide.get_opposite_side(side),
                                track, SwitchBoxIO.SB_IN)
-        assert sb_from is not None and sb_to is not None
+        if sb_from is None or sb_to is None:
+            # this could be non-uniform routing network
+            return
         sb_from.add_edge(sb_to)
 
     def clone(self):
