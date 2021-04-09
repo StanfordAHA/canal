@@ -329,7 +329,7 @@ class SB(InterconnectConfigurable):
                         node_, node_mux = self.sb_muxs[str(node)]
                         assert node_ == node
                         # notice that in magma, Bits[1] cannot be wired to Bit
-                        if len(node.get_conn_in()) == 1 and len(sb) == 1:
+                        if len(node.get_conn_in()) == 1:
                             input_port = node_mux.ports.I
                         else:
                             input_port = node_mux.ports.I[idx]

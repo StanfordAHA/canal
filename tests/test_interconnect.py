@@ -396,20 +396,30 @@ def test_uniform_uneven_sb():
 
     num_removed_track = 2
 
-    class ADisjointSwitchBox(SwitchBox):
+    class NonUniformSwitchBox(SwitchBox):
         def __init__(self, x: int, y: int, num_track: int, width: int):
-            internal_wires = SwitchBoxHelper.get_disjoint_sb_wires(num_track)
+            internal_wires = SwitchBoxHelper.get_imran_sb_wires(num_track)
             conns_to_remove = set()
             remove_range = range(num_track - num_removed_track, num_track)
             remove_side = {SwitchBoxSide.WEST, SwitchBoxSide.EAST}
             for conn in internal_wires:
-                n1, n1_side, n2, n2_size = conn
+                n1, n1_side, n2, n2_side = conn
                 if n1 in remove_range and n1_side in remove_side:
                     conns_to_remove.add(conn)
-                if n2 in remove_range and n2_size in remove_side:
+                if n2 in remove_range and n2_side in remove_side:
+                    conns_to_remove.add(conn)
+                # we remove all the vertical connections
+                if n1_side not in remove_side and n2_side not in remove_side:
                     conns_to_remove.add(conn)
             for conn in conns_to_remove:
                 internal_wires.remove(conn)
+
+            # add rotation for vertical tracks
+            for i in range(num_track):
+                next_track = (i + 1) % num_track
+                internal_wires.append((i, SwitchBoxSide.NORTH, next_track, SwitchBoxSide.SOUTH))
+                internal_wires.append((i, SwitchBoxSide.SOUTH, next_track, SwitchBoxSide.NORTH))
+
             super().__init__(x, y, num_track, width, internal_wires)
 
     in_conn = [(SwitchBoxSide.WEST, SwitchBoxIO.SB_IN),
@@ -422,8 +432,8 @@ def test_uniform_uneven_sb():
                                          create_core,
                                          {f"data_in_{bit_width}b": in_conn,
                                           f"data_out_{bit_width}b": out_conn},
-                                         {track_length: 5},
-                                         ADisjointSwitchBox)
+                                         {track_length: 4},
+                                         NonUniformSwitchBox)
         ics[bit_width] = ic
     interconnect = Interconnect(ics, 8, 32, 16,
                                 lift_ports=True)
