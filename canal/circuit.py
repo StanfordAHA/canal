@@ -77,13 +77,13 @@ class InterconnectConfigurable(Configurable):
 
 class CB(InterconnectConfigurable):
     def __init__(self, node: PortNode,
-                 config_addr_width: int, config_data_width: int,
+                 config_addr_width_reg: int, config_data_width: int,
                  double_buffer: bool = False):
         if not isinstance(node, PortNode):
             raise ValueError(node, PortNode.__name__)
         self.node: PortNode = node
 
-        super().__init__(config_addr_width, config_data_width,
+        super().__init__(config_addr_width_reg, config_data_width,
                          double_buffer=double_buffer)
 
         self.mux = create_mux(self.node)
@@ -98,7 +98,7 @@ class CB(InterconnectConfigurable):
 
         if self.mux.height > 1:
             self.add_ports(
-                config=magma.In(ConfigurationType(config_addr_width,
+                config=magma.In(ConfigurationType(config_addr_width_reg,
                                                   config_data_width)),
             )
             config_name = get_mux_sel_name(self.node)
@@ -124,7 +124,7 @@ class CB(InterconnectConfigurable):
 
 
 class SB(InterconnectConfigurable):
-    def __init__(self, switchbox: SwitchBox, config_addr_width: int,
+    def __init__(self, switchbox: SwitchBox, config_addr_width_reg: int,
                  config_data_width: int, core_name: str = "",
                  stall_signal_width: int = 4,
                  double_buffer: bool = False):
@@ -138,7 +138,7 @@ class SB(InterconnectConfigurable):
 
         self.mux_name_to_node: Dict[str:, Node] = {}
 
-        super().__init__(config_addr_width, config_data_width,
+        super().__init__(config_addr_width_reg, config_data_width,
                          double_buffer=double_buffer)
 
         # turn off hashing because we control the hash by ourselves
@@ -184,7 +184,7 @@ class SB(InterconnectConfigurable):
         # set up the configuration registers, if needed
         if len(self.sb_muxs) > 0:
             self.add_ports(
-                config=magma.In(ConfigurationType(config_addr_width,
+                config=magma.In(ConfigurationType(config_addr_width_reg,
                                                   config_data_width)),
             )
         else:
@@ -381,9 +381,12 @@ class TileCircuit(generator.Generator):
     """
 
     def __init__(self, tiles: Dict[int, Tile],
-                 config_addr_width: int, config_data_width: int,
-                 tile_id_width: int = 16,
-                 full_config_addr_width: int = 32,
+                 config_data_width: int,
+                 config_addr_width: int,
+                 config_addr_width_tile_id_x: int = 8,
+                 config_addr_width_tile_id_y: int = 8,
+                 config_addr_width_reg: int = 8,
+                 config_addr_width_feat: int = 8,
                  stall_signal_width: int = 4,
                  double_buffer: bool = False):
         super().__init__()
@@ -392,23 +395,31 @@ class TileCircuit(generator.Generator):
         self.set_skip_hash(True)
 
         self.tiles = tiles
-        self.config_addr_width = config_addr_width
         self.config_data_width = config_data_width
-        self.tile_id_width = tile_id_width
+        self.config_addr_width = config_addr_width
+        self.config_addr_width_tile_id_x = config_addr_width_tile_id_x
+        self.config_addr_width_tile_id_y = config_addr_width_tile_id_y
+        self.config_addr_width_reg = config_addr_width_reg
+        self.config_addr_width_feat = config_addr_width_feat
+        self.tile_id_width = config_addr_width_tile_id_x + config_addr_width_tile_id_y
 
         self.double_buffer = double_buffer
 
         # compute config addr sizes
-        # (16, 24)
-        full_width = full_config_addr_width
-        self.full_config_addr_width = full_config_addr_width
-        self.feature_addr_slice = slice(full_width - self.tile_id_width,
-                                        full_width - self.config_addr_width)
-        # (0, 16)
-        self.tile_id_slice = slice(0, self.tile_id_width)
-        # (24, 32)
-        self.feature_config_slice = slice(full_width - self.config_addr_width,
-                                          full_width)
+        self.full_config_addr_width = config_addr_width
+        # | feat_reg | feat_addr | tile_y | tile_x |
+        # tile_id
+        tile_id_start = 0
+        tile_id_end = tile_id_start + self.tile_id_width
+        self.tile_id_slice = slice(tile_id_start, tile_id_end)
+        # feat_addr
+        feat_addr_start = tile_id_end
+        feat_addr_end = feat_addr_start + self.config_addr_width_feat
+        self.feature_addr_slice = slice(feat_addr_start, feat_addr_end)
+        # feat_config (feat_reg)
+        feat_config_start = feat_addr_end
+        feat_config_end = feat_config_start + self.config_addr_width_reg
+        self.feature_config_slice = slice(feat_config_start, feat_config_end)
 
         # sanity check
         x = -1
@@ -459,7 +470,7 @@ class TileCircuit(generator.Generator):
                         continue
                     # create a CB
                     port_ref = tile.get_port_ref(port_node.name)
-                    cb = CB(port_node, config_addr_width, config_data_width,
+                    cb = CB(port_node, config_addr_width_reg, config_data_width,
                             double_buffer=self.double_buffer)
                     self.wire(cb.ports.O, port_ref)
                     self.cbs[port_name] = cb
@@ -470,7 +481,7 @@ class TileCircuit(generator.Generator):
 
             # switch box time
             core_name = self.core.name() if self.core is not None else ""
-            sb = SB(tile.switchbox, config_addr_width, config_data_width,
+            sb = SB(tile.switchbox, config_addr_width_reg, config_data_width,
                     core_name, stall_signal_width=stall_signal_width,
                     double_buffer=self.double_buffer)
             self.sbs[sb.switchbox.width] = sb
@@ -704,7 +715,7 @@ class TileCircuit(generator.Generator):
         num_features = len(features)
         self.read_data_mux = MuxWithDefaultWrapper(num_features,
                                                    self.config_data_width,
-                                                   self.config_addr_width,
+                                                   self.config_addr_width_reg,
                                                    0)
         self.read_data_mux.instance_name = "read_data_mux"
         # most of the logic copied from tile_magma.py
@@ -759,7 +770,7 @@ class TileCircuit(generator.Generator):
             # for each feature,
             # config_en = (config_addr.feature == feature_num) & config_en_tile
             decode_feat.append(
-                FromMagma(mantle.DefineDecode(i, self.config_addr_width)))
+                FromMagma(mantle.DefineDecode(i, self.config_addr_width_reg)))
             decode_feat[-1].instance_name = f"DECODE_FEATURE_{i}"
             feat_and_config_en_tile.append(FromMagma(mantle.DefineAnd(2)))
             feat_and_config_en_tile[-1].instance_name = f"FEATURE_AND_{i}"

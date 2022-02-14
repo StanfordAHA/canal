@@ -20,8 +20,12 @@ class GlobalSignalWiring(enum.Enum):
 
 class Interconnect(generator.Generator):
     def __init__(self, interconnects: Dict[int, InterconnectGraph],
-                 config_addr_width: int, config_data_width: int,
-                 tile_id_width: int,
+                 config_data_width: int,
+                 config_addr_width: int,
+                 config_addr_width_tile_id_x: int = 8,
+                 config_addr_width_tile_id_y: int = 8,
+                 config_addr_width_reg: int = 8,
+                 config_addr_width_feat: int = 8,
                  stall_signal_width: int = 4,
                  lift_ports=False,
                  double_buffer: bool = False):
@@ -31,7 +35,11 @@ class Interconnect(generator.Generator):
 
         self.config_data_width = config_data_width
         self.config_addr_width = config_addr_width
-        self.tile_id_width = tile_id_width
+        self.config_addr_width_tile_id_x = config_addr_width_tile_id_x
+        self.config_addr_width_tile_id_y = config_addr_width_tile_id_y
+        self.config_addr_width_reg = config_addr_width_reg
+        self.config_addr_width_feat = config_addr_width_feat
+        self.tile_id_width = config_addr_width_tile_id_x + config_addr_width_tile_id_y
         self.stall_signal_width = stall_signal_width
         self.__graphs: Dict[int, InterconnectGraph] = interconnects
         self.__lifted_ports = lift_ports
@@ -79,8 +87,14 @@ class Interconnect(generator.Generator):
         # create individual tile circuits
         for coord, tiles in self.__tiles.items():
             self.tile_circuits[coord] = \
-                TileCircuit(tiles, config_addr_width, config_data_width,
-                            stall_signal_width=stall_signal_width,
+                TileCircuit(tiles=tiles,
+                            config_data_width=self.config_data_width,
+                            config_addr_width=self.config_addr_width,
+                            config_addr_width_tile_id_x=self.config_addr_width_tile_id_x,
+                            config_addr_width_tile_id_y=self.config_addr_width_tile_id_y,
+                            config_addr_width_reg=self.config_addr_width_reg,
+                            config_addr_width_feat=self.config_addr_width_feat,
+                            stall_signal_width=self.stall_signal_width,
                             double_buffer=self.double_buffer)
 
         # we need to deal with inter-tile connections now
@@ -164,7 +178,8 @@ class Interconnect(generator.Generator):
         return self.__interface
 
     def get_tile_id(self, x: int, y: int):
-        return x << (self.tile_id_width // 2) | y
+        # return x << (self.tile_id_width // 2) | y
+        return x << (self.config_addr_width_tile_id_y) | y
 
     def __set_tile_id(self):
         for (x, y), tile in self.tile_circuits.items():
@@ -569,11 +584,21 @@ class Interconnect(generator.Generator):
             graph = self.get_graph(bit_width)
             new_graph = graph.clone()
             result_graph[bit_width] = new_graph
-        ic = Interconnect(result_graph, self.config_addr_width,
-                          self.config_data_width,
-                          self.tile_id_width,
-                          self.stall_signal_width,
-                          self.__lifted_ports,
+        # ic = Interconnect(result_graph, self.config_addr_width,
+        #                   self.config_data_width,
+        #                   self.tile_id_width,
+        #                   self.stall_signal_width,
+        #                   self.__lifted_ports,
+        #                   double_buffer=self.double_buffer)
+        ic = Interconnect(interconnects=result_graph,
+                          config_data_width=self.config_data_width,
+                          config_addr_width=self.config_addr_width,
+                          config_addr_width_tile_id_x=self.config_addr_width_tile_id_x,
+                          config_addr_width_tile_id_y=self.config_addr_width_tile_id_y,
+                          config_addr_width_reg=self.config_addr_width_reg,
+                          config_addr_width_feat=self.config_addr_width_feat,
+                          lift_ports=self.__lifted_ports,
+                          stall_signal_width=self.stall_signal_width,
                           double_buffer=self.double_buffer)
         return ic
 
@@ -599,7 +624,7 @@ class Interconnect(generator.Generator):
                             feat.skip_compression:
                         # need to skip all address in this feature space
                         # compute the number address here
-                        num_addr = 1 << self.config_addr_width
+                        num_addr = 1 << self.config_addr_width_reg
                         for reg_addr in range(num_addr):
                             addr = self.get_config_addr(reg_addr, idx, x, y)
                             result.add(addr)
