@@ -90,22 +90,26 @@ def apply_global_meso_wiring(interconnect: Interconnect, io_sides: IOSide = IOSi
             continue
         # wire global inputs to first tile in column
         for signal in global_ports:
+            start = 0 if signal in column[0].ports else 1
+            end = len(column) if signal in column[-1].ports else len(column) - 1
+            if signal not in column[start].ports or signal not in column[end - 1].ports:
+                # don't care about this signal since it doesn't exist in the top two rows
+                continue
+
             interconnect.wire(interconnect.ports[signal],
-                              column[0].ports[signal])
-        # first pass to make signals pass through
-        # pre_ports keep track of ports created by pass_signal_through
-        pre_ports = {}
-        for signal in global_ports:
-            pre_ports[signal] = []
-            for tile in column:
+                              column[start].ports[signal])
+            # first pass to make signals pass through
+            # pre_ports keep track of ports created by pass_signal_through
+            pre_ports = []
+            for i in range(start, end):
+                tile = column[i]
                 # use the transform pass
                 pre_port = pass_signal_through(tile, signal)
-                pre_ports[signal].append(pre_port)
-        # second pass to wire them up
-        for i in range(len(column) - 1):
-            next_tile = column[i + 1]
-            for signal in global_ports:
-                pre_port = pre_ports[signal][i]
+                pre_ports.append(pre_port)
+            # second pass to wire them up
+            for i in range(start, end - 1):
+                next_tile = column[i + 1]
+                pre_port = pre_ports[i]
                 interconnect.wire(pre_port,
                                   next_tile.ports[signal])
 
