@@ -675,6 +675,13 @@ class TileCircuit(generator.Generator):
         assert port1_ref.owner() != port2_ref.owner()
         self.wire(port1_ref, port2_ref)
 
+    def needs_signal(self, signal_name):
+        features = self.features()
+        for feat in features:
+            if signal_name in feat.ports:
+                return True
+        return False
+
     def finalize(self):
         if self.finalized:
             raise Exception("Circuit already finalized")
