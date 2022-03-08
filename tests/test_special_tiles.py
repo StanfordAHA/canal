@@ -14,10 +14,8 @@ def test_empty_tile():
     tile.set_core(core)
     tile_circuit = TileCircuit({bit_width: tile}, 8, 32)
     tile_circuit.finalize()
-    circuit = tile_circuit.circuit()
-    with tempfile.TemporaryDirectory() as tempdir:
-        filename = os.path.join(tempdir, "tile")
-        magma.compile(filename, circuit, output="coreir-verilog")
+    # just an sanity check. latest magma disables empty circuit compilation
+    tile_circuit.circuit()
 
 
 def test_empty_switch_box():
