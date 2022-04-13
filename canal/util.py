@@ -1,5 +1,5 @@
 from gemstone.common.core import Core
-from typing import Tuple, List, Dict, Callable
+from typing import Tuple, List, Dict, Callable, Union
 from .cyclone import SwitchBoxSide, SwitchBoxIO, InterconnectPolicy, \
     InterconnectGraph, DisjointSwitchBox, WiltonSwitchBox, \
     ImranSwitchBox, Tile, SwitchBox, CoreConnectionType
@@ -53,7 +53,7 @@ def create_uniform_interconnect(width: int,
                                 Dict[str, List[Tuple[SwitchBoxSide,
                                                      SwitchBoxIO]]],
                                 track_info: Dict[int, int],
-                                sb_type: SwitchBoxType,
+                                sb_type: Union[SwitchBoxType, Callable],
                                 pipeline_reg:
                                 List[Tuple[int, SwitchBoxSide]] = None,
                                 io_sides: IOSide = IOSide.None_,
@@ -109,6 +109,8 @@ def create_uniform_interconnect(width: int,
                 sb = WiltonSwitchBox(x, y, num_track, track_width)
             elif sb_type == SwitchBoxType.Imran:
                 sb = ImranSwitchBox(x, y, num_track, track_width)
+            elif callable(sb_type):
+                sb = sb_type(x, y, num_track, track_width)
             else:
                 raise NotImplementedError(sb_type)
             tile_circuit = Tile(x, y, track_width, sb, tile_height)
@@ -227,7 +229,8 @@ def connect_io(interconnect: InterconnectGraph,
                         if track < next_tile.switchbox.num_track:
                             sb_node = next_tile.get_sb(side, track,
                                                        SwitchBoxIO.SB_OUT)
-                            sb_node.add_edge(port_node)
+                            if sb_node is not None:
+                                sb_node.add_edge(port_node)
             for output_port, conn in output_port_conn.items():
                 # output is IO to fabric
                 if output_port in tile.ports:
@@ -238,4 +241,5 @@ def connect_io(interconnect: InterconnectGraph,
                         if track < next_tile.switchbox.num_track:
                             sb_node = next_tile.get_sb(side, track,
                                                        SwitchBoxIO.SB_IN)
-                            port_node.add_edge(sb_node)
+                            if sb_node is not None:
+                                port_node.add_edge(sb_node)

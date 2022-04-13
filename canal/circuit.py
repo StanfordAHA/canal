@@ -328,7 +328,11 @@ class SB(InterconnectConfigurable):
                         idx = node.get_conn_in().index(sb)
                         node_, node_mux = self.sb_muxs[str(node)]
                         assert node_ == node
-                        input_port = node_mux.ports.I[idx]
+                        # notice that in magma, Bits[1] cannot be wired to Bit
+                        if len(node.get_conn_in()) == 1:
+                            input_port = node_mux.ports.I
+                        else:
+                            input_port = node_mux.ports.I[idx]
                         self.wire(input_port, output_port)
 
     def __connect_sb_out(self):
@@ -549,8 +553,13 @@ class TileCircuit(generator.Generator):
                                                 magma.In(magma.Bits[bit_width]))
                             self.wire(self.__get_port(port_name),
                                       sb_circuit.ports[port_name])
+                        # notice that in magma, Bits[1] cannot be wired to Bit
+                        if len(sb_node.get_conn_in()) == 1:
+                            input_port = mux.ports.I
+                        else:
+                            input_port = mux.ports.I[idx]
                         sb_circuit.wire(sb_circuit.ports[port_name],
-                                        mux.ports.I[idx])
+                                        input_port)
 
         self.__add_tile_id()
         # add ports
