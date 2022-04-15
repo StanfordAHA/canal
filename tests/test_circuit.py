@@ -25,6 +25,7 @@ def test_cb(num_tracks: int, bit_width: int):
         sb.add_edge(port_node)
 
     cb = CB(port_node, addr_width, data_width)
+    cb.finalize()
 
     assert cb.mux.height == num_tracks
 
@@ -90,6 +91,7 @@ def test_sb(num_tracks: int, bit_width: int, sb_ctor,
                 switchbox.add_pipeline_register(side, track)
 
     sb_circuit = SB(switchbox, addr_width, data_width)
+    sb_circuit.finalize()
     circuit = sb_circuit.circuit()
 
     # test the sb routing as well
@@ -207,6 +209,7 @@ def test_stall(sb_ctor):
             switchbox.add_pipeline_register(side, track)
 
     sb_circuit = SB(switchbox, addr_width, data_width, stall_signal_width=1)
+    sb_circuit.finalize()
     circuit = sb_circuit.circuit()
 
     # test the sb routing as well

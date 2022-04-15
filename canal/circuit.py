@@ -126,6 +126,7 @@ class SB(InterconnectConfigurable):
                  config_data_width: int, core_name: str = "",
                  stall_signal_width: int = 4,
                  double_buffer: bool = False):
+        self.finalized = False
         self.switchbox = switchbox
         self.__core_name = core_name
         self.stall_signal_width = stall_signal_width
@@ -221,6 +222,9 @@ class SB(InterconnectConfigurable):
         self.set_skip_hash(False)
 
     def finalize(self):
+        if self.finalized:
+            return
+        self.finalized = True
         self._setup_config()
 
         # clock gate the pipeline registers if not used
