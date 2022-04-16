@@ -115,8 +115,6 @@ class CB(InterconnectConfigurable):
                 self.ports.pop("use_db")
                 self.ports.pop("config_db")
 
-        self._setup_config()
-
         self.instance_name = self.name()
 
     def name(self):
@@ -128,6 +126,7 @@ class SB(InterconnectConfigurable):
                  config_data_width: int, core_name: str = "",
                  stall_signal_width: int = 4,
                  double_buffer: bool = False):
+        self.finalized = False
         self.switchbox = switchbox
         self.__core_name = core_name
         self.stall_signal_width = stall_signal_width
@@ -208,10 +207,6 @@ class SB(InterconnectConfigurable):
             self.add_config_node(reg_mux, config_name, mux.sel_bits)
             self.wire(self.registers[config_name].ports.O,
                       mux.ports.S)
-        self._setup_config()
-
-        # clock gate the pipeline registers if not used
-        self.__wire_config_ce()
 
         # name
         self.instance_name = self.name()
@@ -225,6 +220,15 @@ class SB(InterconnectConfigurable):
         _hash ^= hash(switchbox.id)
         self.set_hash(_hash)
         self.set_skip_hash(False)
+
+    def finalize(self):
+        if self.finalized:
+            return
+        self.finalized = True
+        self._setup_config()
+
+        # clock gate the pipeline registers if not used
+        self.__wire_config_ce()
 
     def add_config_node(self, node: Node, name, width):
         super().add_config(name, width)
@@ -717,6 +721,8 @@ class TileCircuit(generator.Generator):
         # most of the logic copied from tile_magma.py
         # remove all hardcoded values
         for feature in self.features():
+            if hasattr(feature, "finalize"):
+                feature.finalize()
             if "config" not in feature.ports:
                 continue
             self.wire(self.ports.config.config_addr[self.feature_config_slice],
