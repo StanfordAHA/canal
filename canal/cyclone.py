@@ -1041,10 +1041,17 @@ class SwitchBoxHelper:
 
         for track in range(num_tracks):
             # f_e1
-            result.append((track, SwitchBoxSide.WEST,
-                           mod(w - track, w), SwitchBoxSide.NORTH))
-            result.append((mod(w - track, w), SwitchBoxSide.NORTH,
-                           track, SwitchBoxSide.WEST))
+            if track != 0 and track != w - 1 or mod(w, 2) != 0:
+                result.append((track, SwitchBoxSide.WEST,
+                            mod(w - track, w), SwitchBoxSide.NORTH))
+                result.append((mod(w - track, w), SwitchBoxSide.NORTH,
+                            track, SwitchBoxSide.WEST))
+            elif track == 0:
+                result.append((track, SwitchBoxSide.WEST,
+                            1, SwitchBoxSide.NORTH))
+            elif track == w - 1:
+                result.append((track, SwitchBoxSide.WEST,
+                            0, SwitchBoxSide.NORTH))
             # f_e2
             result.append((track, SwitchBoxSide.NORTH,
                            mod(track + 1, w), SwitchBoxSide.EAST))
