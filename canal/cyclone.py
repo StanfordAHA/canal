@@ -401,10 +401,12 @@ class WiltonSwitchBox(SwitchBox):
 
 class ImranSwitchBox(SwitchBox):
     def __init__(self, x: int, y: int, num_track: int, width: int):
-        if mod(num_track, 2)==1: # odd number of tracks
+        if mod(num_track, 2) == 1:
+            # odd number of tracks
             internal_wires = SwitchBoxHelper.get_imran_sb_wires(num_track)
-        else: # even number of tracks
-            internal_wires = SwitchBoxHelper.get_imranEven_sb_wires(num_track)
+        else:
+            # even number of tracks
+            internal_wires = SwitchBoxHelper.get_imran_even_sb_wires(num_track)
         super().__init__(x, y, num_track, width, internal_wires)
 
 
@@ -1076,7 +1078,7 @@ class SwitchBoxHelper:
         return result
 
     @staticmethod
-    def get_imranEven_sb_wires(num_tracks: int) -> List[Tuple[int,
+    def get_imran_even_sb_wires(num_tracks: int) -> List[Tuple[int,
                                                           SwitchBoxSide,
                                                           int,
                                                           SwitchBoxSide]]:
