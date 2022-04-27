@@ -401,7 +401,12 @@ class WiltonSwitchBox(SwitchBox):
 
 class ImranSwitchBox(SwitchBox):
     def __init__(self, x: int, y: int, num_track: int, width: int):
-        internal_wires = SwitchBoxHelper.get_imran_sb_wires(num_track)
+        if mod(num_track, 2) == 1:
+            # odd number of tracks
+            internal_wires = SwitchBoxHelper.get_imran_sb_wires(num_track)
+        else:
+            # even number of tracks
+            internal_wires = SwitchBoxHelper.get_imran_even_sb_wires(num_track)
         super().__init__(x, y, num_track, width, internal_wires)
 
 
@@ -1045,6 +1050,56 @@ class SwitchBoxHelper:
                            mod(w - track, w), SwitchBoxSide.NORTH))
             result.append((mod(w - track, w), SwitchBoxSide.NORTH,
                            track, SwitchBoxSide.WEST))
+            # f_e2
+            result.append((track, SwitchBoxSide.NORTH,
+                           mod(track + 1, w), SwitchBoxSide.EAST))
+            result.append((mod(track + 1, w), SwitchBoxSide.EAST,
+                           track, SwitchBoxSide.NORTH))
+            # f_e3
+            result.append((track, SwitchBoxSide.SOUTH,
+                           mod(w - track - 2, w), SwitchBoxSide.EAST))
+            result.append((mod(w - track - 2, w), SwitchBoxSide.EAST,
+                           track, SwitchBoxSide.SOUTH))
+            # f_e4
+            result.append((track, SwitchBoxSide.WEST,
+                           mod(track - 1, w), SwitchBoxSide.SOUTH))
+            result.append((mod(track - 1, w), SwitchBoxSide.SOUTH,
+                           track, SwitchBoxSide.WEST))
+            # f_e5
+            result.append((track, SwitchBoxSide.WEST,
+                           track, SwitchBoxSide.EAST))
+            result.append((track, SwitchBoxSide.EAST,
+                           track, SwitchBoxSide.WEST))
+            # f_e6
+            result.append((track, SwitchBoxSide.SOUTH,
+                           track, SwitchBoxSide.NORTH))
+            result.append((track, SwitchBoxSide.NORTH,
+                           track, SwitchBoxSide.SOUTH))
+        return result
+
+    @staticmethod
+    def get_imran_even_sb_wires(num_tracks: int) -> List[Tuple[int,
+                                                          SwitchBoxSide,
+                                                          int,
+                                                          SwitchBoxSide]]:
+        w = num_tracks
+        result = []
+        # This method is used when the total number of tracks is even
+        # it changes the connection inside the SB to avoid close-loop
+
+        for track in range(num_tracks):
+            # f_e1
+            if track == 0:
+                result.append((track, SwitchBoxSide.WEST,
+                            1, SwitchBoxSide.NORTH))
+            elif track == (w - 1):
+                result.append((track, SwitchBoxSide.WEST,
+                            0, SwitchBoxSide.NORTH))
+            else:
+                result.append((track, SwitchBoxSide.WEST,
+                            mod(w - track, w), SwitchBoxSide.NORTH))
+                result.append((mod(w - track, w), SwitchBoxSide.NORTH,
+                            track, SwitchBoxSide.WEST))
             # f_e2
             result.append((track, SwitchBoxSide.NORTH,
                            mod(track + 1, w), SwitchBoxSide.EAST))
