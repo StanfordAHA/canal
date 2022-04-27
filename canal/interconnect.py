@@ -252,6 +252,7 @@ class Interconnect(generator.Generator):
                         nodes = list(port_node) + port_node.get_conn_in()[:]
                         for sb_node in nodes:
                             next_coord = sb_node.x, sb_node.y
+                            next_node = sb_node
                             # depends on whether there is a pipeline register
                             # or not, we need to be very careful
                             if isinstance(sb_node, SwitchBoxNode):
@@ -270,7 +271,12 @@ class Interconnect(generator.Generator):
 
                             next_port = \
                                 self.tile_circuits[next_coord].ports[sb_name]
-                            self.wire(tile_port, next_port)
+                            if len(port_node.get_conn_in()) <= 1:
+                                self.wire(tile_port, next_port)
+                            else:
+                                # need to get the sliced port
+                                idx = port_node.get_conn_in().index(next_node)
+                                self.wire(tile_port[idx], next_port)
 
     def __ground_ports(self):
         # this is a pass to ground every sb ports that's not connected
@@ -305,7 +311,7 @@ class Interconnect(generator.Generator):
             # remove all the global signals
             for signal in self.globals:
                 if signal in tile_circuit.ports:
-                    if tile.core is not None and signal in tile.core.ports:
+                    if tile.core is not None and tile.needs_signal(signal):
                         continue
                     tile_circuit.ports.pop(signal)
         # remove empty tiles

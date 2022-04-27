@@ -126,6 +126,7 @@ class SB(InterconnectConfigurable):
                  config_data_width: int, core_name: str = "",
                  stall_signal_width: int = 4,
                  double_buffer: bool = False):
+        self.finalized = False
         self.switchbox = switchbox
         self.__core_name = core_name
         self.stall_signal_width = stall_signal_width
@@ -221,6 +222,9 @@ class SB(InterconnectConfigurable):
         self.set_skip_hash(False)
 
     def finalize(self):
+        if self.finalized:
+            return
+        self.finalized = True
         self._setup_config()
 
         # clock gate the pipeline registers if not used
@@ -674,6 +678,13 @@ class TileCircuit(generator.Generator):
                     port2_ref = port
         assert port1_ref.owner() != port2_ref.owner()
         self.wire(port1_ref, port2_ref)
+
+    def needs_signal(self, signal_name):
+        features = self.features()
+        for feat in features:
+            if signal_name in feat.ports:
+                return True
+        return False
 
     def finalize(self):
         if self.finalized:
