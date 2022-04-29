@@ -378,7 +378,10 @@ class Interconnect(generator.Generator):
                     pre_node = segment[i]
                     next_node = segment[i + 1]
                     assert next_node in pre_node
-                    if pre_node.x != next_node.x or pre_node.y != next_node.y:
+                    # notice that there is a corner case where the SB directly connect to the
+                    # next tile's CB
+                    if (pre_node.x != next_node.x or pre_node.y != next_node.y) and \
+                            (not (isinstance(pre_node, SwitchBoxNode) and isinstance(next_node, PortNode))):
                         # inter tile connection. skipping for now
                         continue
                     if len(next_node.get_conn_in()) == 1:
