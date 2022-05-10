@@ -10,6 +10,7 @@ import tempfile
 import fault
 import fault.random
 import pytest
+import shutil
 
 
 @pytest.mark.parametrize('num_tracks', [2, 5])
@@ -96,6 +97,9 @@ def test_cb_ready_valid():
         tester.expect(circuit.ready_out[config_data.as_uint()], ready)
 
     with tempfile.TemporaryDirectory() as tempdir:
+        sv_files = AOIMuxWrapper.get_sv_files()
+        for f in sv_files:
+            shutil.copy(f, tempdir)
         tester.compile_and_run(target="verilator",
                                magma_output="coreir-verilog",
                                directory=tempdir,
@@ -772,4 +776,4 @@ def test_double_buffer():
 
 
 if __name__ == "__main__":
-    test_reg_fifo()
+    test_cb_ready_valid()

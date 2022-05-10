@@ -57,7 +57,7 @@ def flatten_mux(mux):
     return _PassThroughFromMux(mux)
 
 
-def create_mux(node: Node, suffix: str = "", width: int = 0):
+def create_mux(node: Node, suffix: str = "", width: int = 0, ready_valid=False):
     conn_in = node.get_conn_in()
     height = len(conn_in)
     node_name = create_name(str(node)) + suffix
@@ -70,7 +70,10 @@ def create_mux(node: Node, suffix: str = "", width: int = 0):
         name = f"WIRE_{node_name}"
     if width == 0:
         width = node.width
-    mux = AOIMuxWrapper(height, width, mux_type=AOIMuxType.Regular, name=name)
+    if ready_valid:
+        mux = AOIMuxWrapper(height, width, mux_type=AOIMuxType.RegularReadyValid, name=name)
+    else:
+        mux = MuxWrapper(height, width, name=name)
     return flatten_mux(mux)
 
 
@@ -371,15 +374,13 @@ class CB(InterconnectConfigurable):
         super().__init__(config_addr_width, config_data_width,
                          double_buffer=double_buffer)
 
-        self.mux = create_mux(self.node)
+        self.mux = create_mux(self.node, ready_valid=ready_valid)
 
         # lift the port to the top level
-        self.add_ports(
-            I=self.mux.ports.I.base_type(),
-            O=self.mux.ports.O.base_type())
-
-        self.wire(self.ports.I, self.mux.ports.I)
+        self.add_ports(O=self.mux.ports.O.base_type())
         self.wire(self.ports.O, self.mux.ports.O)
+        self.add_ports(I=magma.In(magma.Array[self.mux.height, magma.Bits[self.mux.width]]))
+        self.wire(self.ports.I, self.mux.ports.I)
 
         if self.mux.height > 1:
             self.add_ports(
@@ -394,24 +395,15 @@ class CB(InterconnectConfigurable):
             # ready valid has other stuff
             if ready_valid:
                 self.add_ports(
-                    ready_in=magma.In(magma.Bit),
+                    ready_in=magma.In(magma.Bits[1]),
                     ready_out=magma.Out(magma.Bits[self.mux.height]),
                     valid_in=magma.In(magma.Bits[self.mux.height]),
                     valid_out=magma.Out(magma.Bits[1])
                 )
-
-                # create a mux to select the valid. using the same mux selection
-                self.valid_mux = create_mux(self.node, suffix="_valid", width=1)
-                # notice that in magma, Bits[5] is different from Array[5, Bits[1]],
-                # which in SystemVerilog is totally allowed if packed
-                for i in range(self.mux.height):
-                    self.wire(self.ports.valid_in[i], self.valid_mux.ports.I[i][0])
-                self.wire(self.ports.valid_out, self.valid_mux.ports.O)
-                self.wire(self.registers[config_name].ports.O,
-                          self.valid_mux.ports.S)
-                # fanout for ready
-                for i in range(self.mux.height):
-                    self.wire(self.ports.ready_out[i], self.ports.ready_in)
+                for port_type in ["ready", "valid"]:
+                    for direction in ["in", "out"]:
+                        port_name = f"{port_type}_{direction}"
+                        self.wire(self.ports[port_name], self.mux.ports[port_name])
 
         else:
             # remove clk and reset ports from the base class since it's going
@@ -433,13 +425,15 @@ class SB(InterconnectConfigurable):
     def __init__(self, switchbox: SwitchBox, config_addr_width: int,
                  config_data_width: int, core_name: str = "",
                  stall_signal_width: int = 4,
-                 double_buffer: bool = False):
+                 double_buffer: bool = False,
+                 ready_valid: bool = False):
         self.finalized = False
+        self.ready_valid = ready_valid
         self.switchbox = switchbox
         self.__core_name = core_name
         self.stall_signal_width = stall_signal_width
 
-        self.sb_muxs: Dict[str, Tuple[SwitchBoxNode, MuxWrapper]] = {}
+        self.sb_muxs: Dict[str, Tuple[SwitchBoxNode, AOIMuxWrapper]] = {}
         self.reg_muxs: Dict[str, Tuple[RegisterMuxNode, MuxWrapper]] = {}
         self.regs: Dict[str, Tuple[RegisterNode, FromMagma]] = {}
 
@@ -519,6 +513,9 @@ class SB(InterconnectConfigurable):
         # name
         self.instance_name = self.name()
 
+        # ready valid interface
+        self.__wire_reg_reset()
+
         # extra hashing because we don't represent it in the module name
         _hash = hash(self)
         # ordering doesn't mater here
@@ -575,8 +572,11 @@ class SB(InterconnectConfigurable):
 
     def __create_reg(self):
         for reg_name, reg_node in self.switchbox.registers.items():
-            reg_cls = DefineRegister(reg_node.width, has_ce=True)
-            reg = FromMagma(reg_cls)
+            if self.ready_valid:
+                reg = FifoRegWrapper(reg_node.width)
+            else:
+                reg_cls = DefineRegister(reg_node.width, has_ce=True)
+                reg = FromMagma(reg_cls)
             reg.instance_name = create_name(str(reg_node))
             self.regs[reg_name] = reg_node, reg
         # add stall ports
@@ -606,6 +606,12 @@ class SB(InterconnectConfigurable):
             self.wire(and_gate.ports.I1, invert.ports.O)
             self.wire(reg.ports.CE, self.convert(and_gate.ports.O[0],
                                                  magma.enable))
+
+    def __wire_reg_reset(self):
+        # only for ready valid mode
+        if self.ready_valid:
+            for (_, reg) in self.regs.values():
+                self.wire(self.ports.reset, reg.ports.ASYNCRESET)
 
     def __get_connected_port_names(self) -> List[str]:
         # this is to uniquify the SB given different port connections
@@ -653,6 +659,9 @@ class SB(InterconnectConfigurable):
                         assert len(reg_node.get_conn_in()) == 1
                         # wire 1
                         self.wire(mux.ports.O, reg.ports.I)
+                        if self.ready_valid:
+                            self.wire(mux.ports.valid_out, reg.ports.valid_in)
+                            self.wire(mux.ports.ready_out, reg.ports.ready_in)
                     elif isinstance(node, RegisterMuxNode):
                         assert len(node.get_conn_in()) == 2
                         idx = node.get_conn_in().index(sb)
@@ -661,6 +670,8 @@ class SB(InterconnectConfigurable):
                         assert n == node
                         # wire 2
                         self.wire(mux.ports.O, reg_mux.ports.I[idx])
+                        if self.ready_valid:
+                            self.wire(mux.ports.valid_out, reg_mux.ports.valid_in[idx])
 
     def __connect_regs(self):
         for _, (node, reg) in self.regs.items():
@@ -681,6 +692,15 @@ class SB(InterconnectConfigurable):
             idx = reg_mux_node.get_conn_in().index(node)
             # wire 3
             self.wire(reg.ports.O, mux.ports.I[idx])
+
+            if self.ready_valid:
+                # need to connect valid signals
+                self.wire(reg.ports.valid_out, mux.ports.valid_in[idx])
+                self.wire(reg.ports.ready_in, mux.ports.ready_out)
+
+    def __handle_rmux_fanout(self, sb: SwitchBoxNode, rmux: RegisterMuxNode, reg: RegisterNode):
+        pass
+
 
 
 class TileCircuit(GemstoneGenerator):
