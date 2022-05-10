@@ -3,20 +3,19 @@ This is a layer build on top of Cyclone
 """
 from collections import OrderedDict
 
+import kratos.util
+import _kratos
 from gemstone.common.core import Core
 from gemstone.common.mux_with_default import MuxWithDefaultWrapper
-from gemstone.common.zext_wrapper import ZextWrapper
 from gemstone.common.configurable import Configurable, ConfigurationType
 from .cyclone import Node, PortNode, Tile, SwitchBoxNode, SwitchBoxIO, \
     SwitchBox, InterconnectCore, RegisterNode, RegisterMuxNode
 import mantle
 from gemstone.common.mux_wrapper import MuxWrapper
 from gemstone.common.mux_wrapper_aoi import AOIMuxWrapper, AOIMuxType
-from gemstone.generator.generator import Generator
 import magma
 from typing import Dict, Tuple, List, Union
-import gemstone
-import gemstone.generator.generator as generator
+from gemstone.generator.generator import Generator as GemstoneGenerator
 from gemstone.generator.from_magma import FromMagma
 from mantle import DefineRegister
 from gemstone.generator.const import Const
@@ -37,7 +36,7 @@ def get_mux_sel_name(node: Node):
     return f"{create_name(str(node))}_sel"
 
 
-class _PassThroughFromMux(Generator):
+class _PassThroughFromMux(GemstoneGenerator):
     def __init__(self, mux):
         super().__init__()
         self.width = mux.width
@@ -71,7 +70,7 @@ def create_mux(node: Node, suffix: str = "", width: int = 0):
         name = f"WIRE_{node_name}"
     if width == 0:
         width = node.width
-    mux = AOIMuxWrapper(height, width, AOIMuxType.Regular, name=name)
+    mux = AOIMuxWrapper(height, width, mux_type=AOIMuxType.Regular, name=name)
     return flatten_mux(mux)
 
 
@@ -88,7 +87,7 @@ class RegFIFO(Generator):
                  break_out_rd_ptr=False,
                  almost_full_diff=2):
 
-        super().__init__(f"reg_fifo_d_{depth}_w_{width_mult}", debug=True)
+        super().__init__(f"reg_fifo_d_{depth}_w_{width_mult}")
 
         self.data_width = self.parameter("data_width", 16)
         self.data_width.value = data_width
@@ -103,7 +102,7 @@ class RegFIFO(Generator):
         # CLK and RST
         self._clk = self.clock("clk")
         self._rst_n = self.reset("rst_n")
-        self._clk_en = self.input("clk_en", 1)
+        self._clk_en = self.clock_en("clk_en", 1)
 
         # INPUTS
         self._data_in = self.input("data_in",
@@ -304,6 +303,56 @@ class RegFIFO(Generator):
             self._num_items = self._num_items + 1
         elif ~self._write & self._read:
             self._num_items = self._num_items - 1
+
+
+class FifoRegWrapper(GemstoneGenerator):
+    __cache = {}
+
+    def __init__(self, width):
+        super(FifoRegWrapper, self).__init__()
+        self.width = width
+
+        if width not in FifoRegWrapper.__cache:
+            gen = RegFIFO(width, 1, depth=2)
+            _kratos.passes.auto_insert_clock_enable(gen.internal_generator)
+            circuit = kratos.util.to_magma(gen)
+            FifoRegWrapper.__cache[width] = circuit
+        self.__circuit = FromMagma(FifoRegWrapper.__cache[width])
+
+        # create wrapper ports so that it has the same interface as normal
+        # magma registers modulo ready valid
+        self.add_ports(
+            I=magma.In(magma.Bits[width]),
+            O=magma.Out(magma.Bits[width]),
+            clk=magma.In(magma.Clock),
+            CE=magma.In(magma.Enable),
+            ASYNCRESET=magma.In(magma.AsyncReset),
+            valid_in=magma.In(magma.Bit),
+            valid_out=magma.Out(magma.Bit),
+            ready_in=magma.In(magma.Bit),
+            ready_out=magma.Out(magma.Bit)
+        )
+
+        self.wire(self.ports.I, self.__circuit.ports.data_in)
+        self.wire(self.ports.O, self.__circuit.ports.data_out)
+        self.wire(self.ports.clk, self.__circuit.ports.clk)
+        self.wire(self.ports.CE, self.__circuit.ports.clk_en[0])
+        # need an inverter for async reset
+        async_inverter = FromMagma(mantle.Not)
+        async_inverter.instance_name = "async_inverter"
+        self.wire(self.ports.ASYNCRESET, self.convert(async_inverter.ports.I, magma.asyncreset))
+        self.wire(self.convert(async_inverter.ports.O, magma.asyncreset), self.__circuit.ports.rst_n)
+        self.wire(self.ports.valid_in, self.__circuit.ports.push[0])
+        self.wire(self.ports.valid_out, self.__circuit.ports.valid[0])
+        self.wire(self.ports.ready_in, self.__circuit.ports["pop"][0])
+        # invert full
+        full_inverter = FromMagma(mantle.Not)
+        full_inverter.instance_name = "full_inverter"
+        self.wire(full_inverter.ports.I, self.__circuit.ports.full[0])
+        self.wire(self.ports.ready_out, full_inverter.ports.O)
+
+    def name(self):
+        return f"FifoRegWrapper_{self.width}"
 
 
 class InterconnectConfigurable(Configurable):
@@ -634,7 +683,7 @@ class SB(InterconnectConfigurable):
             self.wire(reg.ports.O, mux.ports.I[idx])
 
 
-class TileCircuit(generator.Generator):
+class TileCircuit(GemstoneGenerator):
     """We merge tiles at the same coordinates with different bit widths
     The only requirements is that the tiles have to be on the same
     coordinates. Their heights do not have to match.
@@ -827,7 +876,7 @@ class TileCircuit(generator.Generator):
         self.instance_name = f"Tile_X{self.x:02X}_Y{self.y:02X}"
 
         # add features
-        self.__features: List[generator.Generator] = []
+        self.__features: List[GemstoneGenerator] = []
         # users are free to add more features to the core
 
         # add feature
@@ -1047,11 +1096,11 @@ class TileCircuit(generator.Generator):
             if "config_en" in feat.ports:
                 self.wire(decode_feat[i].ports.O, feat.ports["config_en"])
 
-    def add_feature(self, feature: generator.Generator):
-        assert isinstance(feature, generator.Generator)
+    def add_feature(self, feature: GemstoneGenerator):
+        assert isinstance(feature, GemstoneGenerator)
         self.__features.append(feature)
 
-    def features(self) -> List[generator.Generator]:
+    def features(self) -> List[GemstoneGenerator]:
         return self.__features
 
     def get_route_bitstream_config(self, src_node: Node, dst_node: Node):
