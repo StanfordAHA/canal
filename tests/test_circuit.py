@@ -58,6 +58,50 @@ def test_cb(num_tracks: int, bit_width: int):
                                flags=["-Wno-fatal"])
 
 
+def test_cb_ready_valid():
+    addr_width = 8
+    data_width = 32
+    bit_width = 16
+    num_tracks = 5
+
+    port_node = PortNode("data_in", 0, 0, bit_width)
+
+    for i in range(num_tracks):
+        sb = SwitchBoxNode(0, 0, i, bit_width, SwitchBoxSide.NORTH,
+                           SwitchBoxIO.SB_IN)
+        sb.add_edge(port_node)
+
+    cb = CB(port_node, addr_width, data_width, ready_valid=True)
+    cb.finalize()
+
+    circuit = cb.circuit()
+    tester = BasicTester(circuit,
+                         circuit.clk,
+                         circuit.reset)
+
+    for config_data in [BitVector[data_width](x) for x in range(num_tracks)]:
+        tester.reset()
+        tester.configure(BitVector[addr_width](0), config_data)
+        tester.config_read(BitVector[addr_width](0))
+        tester.eval()
+        tester.expect(circuit.read_config_data, config_data)
+        inputs = [fault.random.random_bv(1) for _ in range(num_tracks)]
+        for i, input_ in enumerate(inputs):
+            tester.poke(circuit.valid_in[i], BitVector[1](input_))
+        tester.eval()
+        tester.expect(circuit.valid_out, inputs[config_data.as_uint()])
+        ready = fault.random_bv(1)
+        tester.poke(circuit.ready_in, ready)
+        tester.eval()
+        tester.expect(circuit.ready_out[config_data.as_uint()], ready)
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        tester.compile_and_run(target="verilator",
+                               magma_output="coreir-verilog",
+                               directory=tempdir,
+                               flags=["-Wno-fatal"])
+
+
 # helper function to find reg node connect to a sb_node, if any
 def find_reg_mux_node(node: Node) -> Union[Tuple[None, None],
                                            Tuple[RegisterNode,
@@ -685,3 +729,7 @@ def test_double_buffer():
                                magma_output="coreir-verilog",
                                directory=tempdir,
                                flags=["-Wno-fatal"])
+
+
+if __name__ == "__main__":
+    test_cb_ready_valid()

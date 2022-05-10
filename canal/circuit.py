@@ -20,6 +20,7 @@ import gemstone.generator.generator as generator
 from gemstone.generator.from_magma import FromMagma
 from mantle import DefineRegister
 from gemstone.generator.const import Const
+from kratos import Generator, posedge, negedge, always_comb, always_ff, clog2, const
 
 
 def create_name(name: str):
@@ -57,10 +58,10 @@ def flatten_mux(mux):
     return _PassThroughFromMux(mux)
 
 
-def create_mux(node: Node):
+def create_mux(node: Node, suffix: str = "", width: int = 0):
     conn_in = node.get_conn_in()
     height = len(conn_in)
-    node_name = create_name(str(node))
+    node_name = create_name(str(node)) + suffix
     if height > 1:
         if "MUX" not in node_name:
             name = f"MUX_{node_name}"
@@ -68,8 +69,241 @@ def create_mux(node: Node):
             name = node_name
     else:
         name = f"WIRE_{node_name}"
-    mux = AOIMuxWrapper(height, node.width, AOIMuxType.Regular, name=name)
+    if width == 0:
+        width = node.width
+    mux = AOIMuxWrapper(height, width, AOIMuxType.Regular, name=name)
     return flatten_mux(mux)
+
+
+class RegFIFO(Generator):
+    '''
+    This module generates register-based FIFOs. These are useful
+    when we only need a few entries with no prefetching needed
+    '''
+    def __init__(self,
+                 data_width,
+                 width_mult,
+                 depth,
+                 parallel=False,
+                 break_out_rd_ptr=False,
+                 almost_full_diff=2):
+
+        super().__init__(f"reg_fifo_d_{depth}_w_{width_mult}", debug=True)
+
+        self.data_width = self.parameter("data_width", 16)
+        self.data_width.value = data_width
+        self.depth = depth
+        self.width_mult = width_mult
+        self.parallel = parallel
+        self.break_out_rd_ptr = break_out_rd_ptr
+        self.almost_full_diff = almost_full_diff
+
+        assert not (depth & (depth - 1)), "FIFO depth needs to be a power of 2"
+
+        # CLK and RST
+        self._clk = self.clock("clk")
+        self._rst_n = self.reset("rst_n")
+        self._clk_en = self.input("clk_en", 1)
+
+        # INPUTS
+        self._data_in = self.input("data_in",
+                                   self.data_width,
+                                   size=self.width_mult,
+                                   explicit_array=True,
+                                   packed=True)
+        self._data_out = self.output("data_out",
+                                     self.data_width,
+                                     size=self.width_mult,
+                                     explicit_array=True,
+                                     packed=True)
+
+        if self.parallel:
+            self._parallel_load = self.input("parallel_load", 1)
+            self._parallel_read = self.input("parallel_read", 1)
+            self._num_load = self.input("num_load", clog2(self.depth) + 1)
+            self._parallel_in = self.input("parallel_in",
+                                           self.data_width,
+                                           size=(self.depth,
+                                                 self.width_mult),
+                                           explicit_array=True,
+                                           packed=True)
+
+            self._parallel_out = self.output("parallel_out",
+                                             self.data_width,
+                                             size=(self.depth,
+                                                   self.width_mult),
+                                             explicit_array=True,
+                                             packed=True)
+
+        self._push = self.input("push", 1)
+        self._pop = self.input("pop", 1)
+
+        self._valid = self.output("valid", 1)
+
+        ptr_width = max(1, clog2(self.depth))
+
+        self._rd_ptr = self.var("rd_ptr", ptr_width)
+        if self.break_out_rd_ptr:
+            self._rd_ptr_out = self.output("rd_ptr_out", ptr_width)
+            self.wire(self._rd_ptr_out, self._rd_ptr)
+        self._wr_ptr = self.var("wr_ptr", ptr_width)
+        self._read = self.var("read", 1)
+        self._write = self.var("write", 1)
+        self._reg_array = self.var("reg_array",
+                                   self.data_width,
+                                   size=(self.depth,
+                                         self.width_mult),
+                                   packed=True,
+                                   explicit_array=True)
+
+        self._passthru = self.var("passthru", 1)
+        self._empty = self.output("empty", 1)
+        self._full = self.output("full", 1)
+        self._almost_full = self.output("almost_full", 1)
+
+        self._num_items = self.var("num_items", clog2(self.depth) + 1)
+        # self.wire(self._full, (self._wr_ptr + 1) == self._rd_ptr)
+        self.wire(self._full, self._num_items == self.depth)
+        # Experiment to cover latency
+        self.wire(self._almost_full, self._num_items >= (self.depth - self.almost_full_diff))
+        # self.wire(self._empty, self._wr_ptr == self._rd_ptr)
+        self.wire(self._empty, self._num_items == 0)
+
+        self.wire(self._read, self._pop & ~self._passthru & ~self._empty)
+
+        # Disallow passthru for now to prevent combinational loops
+        self.wire(self._passthru, const(0, 1))
+        # self.wire(self._passthru, self._pop & self._push & self._empty)
+
+        # Should only write
+
+        # Boilerplate Add always @(posedge clk, ...) blocks
+        if self.parallel:
+            self.add_code(self.set_num_items_parallel)
+            self.add_code(self.reg_array_ff_parallel)
+            self.add_code(self.wr_ptr_ff_parallel)
+            self.add_code(self.rd_ptr_ff_parallel)
+            self.wire(self._parallel_out, self._reg_array)
+            self.wire(self._write,
+                      self._push & ~self._passthru & (~self._full | (self._parallel_read)))
+        else:
+            # self.wire(self._write, self._push & ~self._passthru & (~self._full | self._pop))
+            # Don't want to write when full at all for decoupling
+            self.wire(self._write, self._push & ~self._passthru & (~self._full))
+            self.add_code(self.set_num_items)
+            self.add_code(self.reg_array_ff)
+            self.add_code(self.wr_ptr_ff)
+            self.add_code(self.rd_ptr_ff)
+        self.add_code(self.data_out_ff)
+        self.add_code(self.valid_comb)
+
+    @always_ff((posedge, "clk"), (negedge, "rst_n"))
+    def rd_ptr_ff(self):
+        if ~self._rst_n:
+            self._rd_ptr = 0
+        elif self._read:
+            self._rd_ptr = self._rd_ptr + 1
+
+    @always_ff((posedge, "clk"), (negedge, "rst_n"))
+    def rd_ptr_ff_parallel(self):
+        if ~self._rst_n:
+            self._rd_ptr = 0
+        elif self._parallel_load | self._parallel_read:
+            self._rd_ptr = 0
+        elif self._read:
+            self._rd_ptr = self._rd_ptr + 1
+
+    @always_ff((posedge, "clk"), (negedge, "rst_n"))
+    def wr_ptr_ff(self):
+        if ~self._rst_n:
+            self._wr_ptr = 0
+        elif self._write:
+            if self._wr_ptr == (self.depth - 1):
+                self._wr_ptr = 0
+            else:
+                self._wr_ptr = self._wr_ptr + 1
+
+    @always_ff((posedge, "clk"), (negedge, "rst_n"))
+    def wr_ptr_ff_parallel(self):
+        if ~self._rst_n:
+            self._wr_ptr = 0
+        elif self._parallel_load:
+            self._wr_ptr = self._num_load[max(1, clog2(self.depth)) - 1, 0]
+        elif self._parallel_read:
+            if self._push:
+                self._wr_ptr = 1
+            else:
+                self._wr_ptr = 0
+        elif self._write:
+            self._wr_ptr = self._wr_ptr + 1
+            # if self._wr_ptr == (self.depth - 1):
+            #     self._wr_ptr = 0
+            # else:
+            #     self._wr_ptr = self._wr_ptr + 1
+
+    @always_ff((posedge, "clk"), (negedge, "rst_n"))
+    def reg_array_ff(self):
+        if ~self._rst_n:
+            self._reg_array = 0
+        elif self._write:
+            self._reg_array[self._wr_ptr] = self._data_in
+
+    @always_ff((posedge, "clk"), (negedge, "rst_n"))
+    def reg_array_ff_parallel(self):
+        if ~self._rst_n:
+            self._reg_array = 0
+        elif self._parallel_load:
+            self._reg_array = self._parallel_in
+        elif self._write:
+            if self._parallel_read:
+                self._reg_array[0] = self._data_in
+            else:
+                self._reg_array[self._wr_ptr] = self._data_in
+
+    @always_comb
+    def data_out_ff(self):
+        if(self._passthru):
+            self._data_out = self._data_in
+        else:
+            self._data_out = self._reg_array[self._rd_ptr]
+
+    @always_comb
+    def valid_comb(self):
+        self._valid = ((~self._empty) | self._passthru)
+        # self._valid = self._pop & ((~self._empty) | self._passthru)
+
+    @always_ff((posedge, "clk"), (negedge, "rst_n"))
+    def set_num_items(self):
+        if ~self._rst_n:
+            self._num_items = 0
+        elif self._write & ~self._read:
+            self._num_items = self._num_items + 1
+        elif ~self._write & self._read:
+            self._num_items = self._num_items - 1
+
+    @always_ff((posedge, "clk"), (negedge, "rst_n"))
+    def set_num_items_parallel(self):
+        if ~self._rst_n:
+            self._num_items = 0
+        elif self._parallel_load:
+            # When fetch width > 1, by definition we cannot load
+            # 0 (only fw or fw - 1), but we need to handle this immediate
+            # pass through in these cases
+            if self._num_load == 0:
+                self._num_items = self._push.extend(self._num_items.width)
+            else:
+                self._num_items = self._num_load
+        # One can technically push while a parallel
+        # read is happening...
+        elif self._parallel_read:
+            if self._push:
+                self._num_items = 1
+            else:
+                self._num_items = 0
+        elif self._write & ~self._read:
+            self._num_items = self._num_items + 1
+        elif ~self._write & self._read:
+            self._num_items = self._num_items - 1
 
 
 class InterconnectConfigurable(Configurable):
@@ -79,7 +313,8 @@ class InterconnectConfigurable(Configurable):
 class CB(InterconnectConfigurable):
     def __init__(self, node: PortNode,
                  config_addr_width: int, config_data_width: int,
-                 double_buffer: bool = False):
+                 double_buffer: bool = False,
+                 ready_valid: bool = False):
         if not isinstance(node, PortNode):
             raise ValueError(node, PortNode.__name__)
         self.node: PortNode = node
@@ -106,6 +341,29 @@ class CB(InterconnectConfigurable):
             self.add_config(config_name, self.mux.sel_bits)
             self.wire(self.registers[config_name].ports.O,
                       self.mux.ports.S)
+
+            # ready valid has other stuff
+            if ready_valid:
+                self.add_ports(
+                    ready_in=magma.In(magma.Bit),
+                    ready_out=magma.Out(magma.Bits[self.mux.height]),
+                    valid_in=magma.In(magma.Bits[self.mux.height]),
+                    valid_out=magma.Out(magma.Bits[1])
+                )
+
+                # create a mux to select the valid. using the same mux selection
+                self.valid_mux = create_mux(self.node, suffix="_valid", width=1)
+                # notice that in magma, Bits[5] is different from Array[5, Bits[1]],
+                # which in SystemVerilog is totally allowed if packed
+                for i in range(self.mux.height):
+                    self.wire(self.ports.valid_in[i], self.valid_mux.ports.I[i][0])
+                self.wire(self.ports.valid_out, self.valid_mux.ports.O)
+                self.wire(self.registers[config_name].ports.O,
+                          self.valid_mux.ports.S)
+                # fanout for ready
+                for i in range(self.mux.height):
+                    self.wire(self.ports.ready_out[i], self.ports.ready_in)
+
         else:
             # remove clk and reset ports from the base class since it's going
             # to be a pass through wire anyway
