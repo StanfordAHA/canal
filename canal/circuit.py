@@ -739,6 +739,8 @@ class SB(InterconnectConfigurable):
                         assert node_ == node
                         input_port = node_mux.ports.I[idx]
                         self.wire(input_port, output_port)
+                        if self.ready_valid:
+                            self.wire(node_mux.ports.valid_in[idx], mux.ports.valid_out)
 
     def __connect_sb_out(self):
         for _, (sb, mux) in self.sb_muxs.items():
@@ -841,12 +843,12 @@ class SB(InterconnectConfigurable):
             in_bit = magma.In(magma.Bit)
             out_bit = magma.Out(magma.Bit)
             if sb.io == SwitchBoxIO.SB_IN:
-                self.add_port(port_name + "_ready_in", in_bit)
+                self.add_port(port_name + "_ready_out", out_bit)
                 self.add_port(port_name + "_valid_in", in_bit)
-                self.wire(self.ports[port_name + "_ready_in"], mux.ports.ready_in)
+                self.wire(self.ports[port_name + "_ready_out"], mux.ports.ready_out)
                 self.wire(self.ports[port_name + "_valid_in"], mux.ports.valid_in)
             else:
-                self.add_port(port_name + "_ready_out", out_bit)
+                self.add_port(port_name + "_ready_in", in_bit)
                 self.add_port(port_name + "_valid_out", out_bit)
 
                 # to see if we have a register mux here
@@ -856,7 +858,7 @@ class SB(InterconnectConfigurable):
                     node, mux = self.reg_muxs[sb_name]
                     assert isinstance(node, RegisterMuxNode)
                     assert node in sb
-                self.wire(self.ports[port_name + "_ready_out"], mux.ports.ready_out)
+                self.wire(self.ports[port_name + "_ready_in"], mux.ports.ready_in)
                 self.wire(self.ports[port_name + "_valid_out"], mux.ports.valid_out)
 
 

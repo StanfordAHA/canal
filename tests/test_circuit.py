@@ -301,6 +301,9 @@ def test_sb_ready_valid():
                          circuit.reset)
 
     with tempfile.TemporaryDirectory() as tempdir:
+        sv_files = AOIMuxWrapper.get_sv_files()
+        for f in sv_files:
+            shutil.copy(f, tempdir)
         tester.compile_and_run(target="verilator",
                                magma_output="coreir-verilog",
                                directory=tempdir,
