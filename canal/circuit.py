@@ -11,6 +11,7 @@ from gemstone.common.configurable import Configurable, ConfigurationType
 from .cyclone import Node, PortNode, Tile, SwitchBoxNode, SwitchBoxIO, \
     SwitchBox, InterconnectCore, RegisterNode, RegisterMuxNode
 import mantle
+import math
 from gemstone.common.mux_wrapper import MuxWrapper
 from gemstone.common.mux_wrapper_aoi import AOIMuxWrapper, AOIMuxType
 import magma
@@ -358,6 +359,87 @@ class FifoRegWrapper(GemstoneGenerator):
         return f"FifoRegWrapper_{self.width}"
 
 
+class ExclusiveNodeFanout(Generator):
+    __cache = {}
+
+    def __init__(self, height: int):
+        super(ExclusiveNodeFanout, self).__init__(f"ExclusiveNodeFanout_H{height}")
+        for i in range(height):
+            self.input(f"I{i}", 1)
+        self.output("O", 1)
+        sel_size = int(math.pow(2, kratos.clog2(height)))
+        self.input("S", sel_size)
+        assert height >= 1
+
+        expr = self.ports.I0 & self.ports.S[0]
+        for i in range(1, height):
+            expr = expr | (self.ports[f"I{i}"] & self.ports[f"S{i}"])
+
+
+        self.wire(self.ports.O, expr)
+
+    @staticmethod
+    def get(height: int):
+        if height not in ExclusiveNodeFanout.__cache:
+            inst = ExclusiveNodeFanout(height)
+            circuit = kratos.util.to_magma(inst)
+            ExclusiveNodeFanout.__cache[height] = circuit
+        circuit = ExclusiveNodeFanout.__cache[height]
+        return FromMagma(circuit)
+
+
+class InclusiveNodeFanout(Generator):
+    __cache = {}
+
+    def __init__(self, node: Node):
+        _hash = InclusiveNodeFanout.__compute_hash(node)
+
+        # make sure we have proper mux
+        for n in node:
+            assert len(n.get_conn_in()) > 1
+
+        super(InclusiveNodeFanout, self).__init__(f"FanoutHash_{_hash}")
+
+        self.output("O", 1)
+
+        temp_vars = []
+        for idx, n in enumerate(list(node)):
+            s = self.input(f"S{idx}", InclusiveNodeFanout.get_sel_size(len(n.get_conn_in())))
+            i = self.input(f"I{idx}", 1)
+            v = self.var(f"sel{idx}", 1)
+            # each term is (I[i] OR ~S[i])
+            mux_i = n.get_conn_in().index(node)
+            self.add_stmt(v.assign((~s[mux_i]) | i))
+            temp_vars.append(v)
+
+        self.wire(self.ports.O, kratos.util.reduce_and(*temp_vars))
+
+    @staticmethod
+    def get_sel_size(height):
+        return int(math.pow(2, kratos.clog2(height)))
+
+    @staticmethod
+    def __compute_hash(node: Node):
+        selections = []
+        for n in list(node):
+            s = InclusiveNodeFanout.get_sel_size(len(n.get_conn_in()))
+            selections.append(s)
+        selections = tuple(selections)
+        _hash = hash(selections)
+        _hash = "{0:X}".format(abs(_hash))
+        return _hash
+
+    @staticmethod
+    def get(node: Node):
+        _hash = InclusiveNodeFanout.__compute_hash(node)
+        if _hash not in InclusiveNodeFanout.__cache:
+            inst = InclusiveNodeFanout(node)
+            circuit = kratos.util.to_magma(inst)
+            InclusiveNodeFanout.__cache[_hash] = circuit
+        circuit = InclusiveNodeFanout.__cache[_hash]
+        return FromMagma(circuit)
+
+
 class InterconnectConfigurable(Configurable):
     pass
 
@@ -697,10 +779,26 @@ class SB(InterconnectConfigurable):
                 # need to connect valid signals
                 self.wire(reg.ports.valid_out, mux.ports.valid_in[idx])
                 self.wire(reg.ports.ready_in, mux.ports.ready_out)
+                self.__handle_rmux_fanin(sb_node, n, node)
 
-    def __handle_rmux_fanout(self, sb: SwitchBoxNode, rmux: RegisterMuxNode, reg: RegisterNode):
-        pass
+    def __handle_rmux_fanin(self, sb: SwitchBoxNode, rmux: RegisterMuxNode, reg: RegisterNode):
+        # exclusive because the destination mux can only select one
+        sb_fanout = ExclusiveNodeFanout.get(len(sb))
+        sb_fanout.instance_name = create_name(str(sb)) + "_FANOUT"
+        reg_circuit = self.regs[reg.name][1]
+        rmux_circuit = self.reg_muxs[str(sb)][1]
+        sb_circuit = self.sb_muxs[str(sb)][1]
+        reg_index = rmux.get_conn_in().index(reg)
+        sb_index = rmux.get_conn_in().index(sb)
+        self.wire(sb_fanout.ports.I[reg_index], reg_circuit.ports.ready_out)
+        self.wire(sb_fanout.ports.I[sb_index], rmux_circuit.ports.ready_out)
+        self.wire(sb_fanout.ports.O, sb_circuit.ports.ready_in)
+        # use rmux selection
+        self.wire(sb_fanout.ports.S, rmux_circuit.ports.out_sel)
 
+    def __handle_sb_fanin(self, sb: SwitchBoxNode):
+        for node in sb:
+            idx = node.get_conn_in().index(sb)
 
 
 class TileCircuit(GemstoneGenerator):
