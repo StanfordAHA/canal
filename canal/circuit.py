@@ -413,10 +413,11 @@ class InclusiveNodeFanout(Generator):
         for idx, n in enumerate(list(node)):
             s = self.input(f"S{idx}", InclusiveNodeFanout.get_sel_size(len(n.get_conn_in())))
             i = self.input(f"I{idx}", 1)
+            e = self.input(f"E{idx}", 1)
             v = self.var(f"sel{idx}", 1)
-            # each term is (I[i] OR ~S[i])
+            # each term is (~E[i] OR I[i] OR ~S[i])
             mux_i = n.get_conn_in().index(node)
-            self.add_stmt(v.assign((~s[mux_i]) | i))
+            self.add_stmt(v.assign(((~e) | (~s[mux_i])) | i))
             temp_vars.append(v)
 
         self.wire(self.ports.O, kratos.util.reduce_and(*temp_vars))
@@ -638,6 +639,10 @@ class SB(InterconnectConfigurable):
             sb_name = str(sb)
             self.sb_muxs[sb_name] = (sb, create_mux(sb, ready_valid=self.ready_valid))
 
+            # for ready valid, we need 1-bit config to know whether the mux is being used or not
+            if self.ready_valid and len(sb.get_conn_in()) > 0:
+                self.add_config(sb_name, 1)
+
     def __create_reg_mux(self):
         for _, reg_mux in self.switchbox.reg_muxs.items():
             # assert the connections to make sure it's a valid register
@@ -817,6 +822,8 @@ class SB(InterconnectConfigurable):
             sb_circuit = self.sb_muxs[str(sb)][1]
             self.wire(fanout.ports[f"I{idx}"][0], sb_circuit.ports.ready_out)
             self.wire(fanout.ports[f"S{idx}"], sb_circuit.ports.out_sel)
+            en = self.registers[str(n)].ports.O
+            self.wire(fanout.ports[f"E{idx}"], en)
         # get the node circuit
         if isinstance(node, SwitchBoxNode):
             port = self.sb_muxs[str(node)][1].ports.ready_in
