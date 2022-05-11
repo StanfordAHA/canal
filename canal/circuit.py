@@ -423,7 +423,7 @@ class InclusiveNodeFanout(Generator):
         selections = []
         for n in list(node):
             s = InclusiveNodeFanout.get_sel_size(len(n.get_conn_in()))
-            selections.append(s)
+            selections.append((s, n.get_conn_in().index(node)))
         selections = tuple(selections)
         _hash = hash(selections)
         _hash = "{0:X}".format(abs(_hash))
@@ -796,9 +796,32 @@ class SB(InterconnectConfigurable):
         # use rmux selection
         self.wire(sb_fanout.ports.S, rmux_circuit.ports.out_sel)
 
-    def __handle_sb_fanin(self, sb: SwitchBoxNode):
-        for node in sb:
-            idx = node.get_conn_in().index(sb)
+    def handle_node_fanin(self, node: Node):
+        fanout = InclusiveNodeFanout.get(node)
+        # fanout ports is I{i} S{i} and sel{i}
+        for idx, n in enumerate(list(node)):
+            # need to get the mux the node is connected to
+            assert isinstance(n, SwitchBoxNode)
+            sb: SwitchBoxNode = n
+            assert sb.io == SwitchBoxIO.SB_OUT
+            sb_circuit = self.sb_muxs[str(sb)][1]
+            self.wire(fanout.ports.I[idx], sb_circuit.ports.ready_out)
+            self.wire(fanout.ports.S[idx], sb_circuit.ports.out_sel)
+        # get the node circuit
+        if isinstance(node, SwitchBoxNode):
+            port = self.sb_muxs[str(node)][1].ports.ready_in
+        else:
+            # has to be a port
+            assert isinstance(node, PortNode)
+            port = self.ports[f"{node.name}_ready_in"]
+        self.wire(fanout.ports.O, port)
+
+    def __connect_nodes_fanin(self):
+        if not self.ready_valid:
+            return
+        for sb, _ in self.sb_muxs.values():
+            if len(sb) > 1:
+                self.handle_node_fanin(sb)
 
 
 class TileCircuit(GemstoneGenerator):

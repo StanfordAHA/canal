@@ -280,6 +280,34 @@ def test_sb(num_tracks: int, bit_width: int, sb_ctor,
                                flags=["-Wno-fatal"])
 
 
+def test_sb_ready_valid():
+    addr_width = 8
+    data_width = 32
+    num_tracks = 5
+
+    switchbox = DisjointSwitchBox(0, 0, 5, 16)
+    # insert registers to every side and tracks
+    for side in SwitchBoxSide:
+        for track in range(num_tracks):
+            switchbox.add_pipeline_register(side, track)
+
+    sb_circuit = SB(switchbox, addr_width, data_width, ready_valid=True)
+    sb_circuit.finalize()
+    circuit = sb_circuit.circuit()
+
+    # test the sb routing as well
+    tester = BasicTester(circuit,
+                         circuit.clk,
+                         circuit.reset)
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        tester.compile_and_run(target="verilator",
+                               magma_output="coreir-verilog",
+                               directory=tempdir,
+                               flags=["-Wno-fatal"])
+
+
+
 @pytest.mark.parametrize("sb_ctor", [DisjointSwitchBox,
                                      WiltonSwitchBox,
                                      ImranSwitchBox])
@@ -776,4 +804,4 @@ def test_double_buffer():
 
 
 if __name__ == "__main__":
-    test_cb_ready_valid()
+    test_sb_ready_valid()
