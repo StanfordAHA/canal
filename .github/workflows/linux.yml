@@ -25,6 +25,7 @@ jobs:
       shell: bash
       run: |
         docker exec -i canal bash -c "pip install -r /canal/requirements.txt"
+        docker exec -i canal bash -c "pip install -e /canal"
         docker exec -i canal bash -c "pip install pytest==7.1.1 python-coveralls"
         docker exec -i canal bash -c "pip install pytest-cov pytest-pycodestyle"
     - name: Run tests ⚙️
