@@ -38,7 +38,7 @@ def get_mux_sel_name(node: Node):
 
 
 class _PassThroughFromMux(GemstoneGenerator):
-    def __init__(self, mux):
+    def __init__(self, mux, ready_valid: bool = False):
         super().__init__()
         self.width = mux.width
         self.height = mux.height
@@ -48,14 +48,23 @@ class _PassThroughFromMux(GemstoneGenerator):
                        O=magma.Out(magma.Bits[mux.width]))
         self.wire(self.ports.I, self.ports.O)
 
+        if ready_valid:
+            bit = magma.Bit
+            self.add_ports(ready_in=magma.In(bit),
+                           ready_out=magma.Out(bit),
+                           valid_in=magma.In(bit),
+                           valid_out=magma.Out(bit))
+            self.wire(self.ports.ready_in, self.ports.ready_out)
+            self.wire(self.ports.valid_in, self.ports.valid_out)
+
     def name(self):
         return self._name
 
 
-def flatten_mux(mux):
+def flatten_mux(mux, ready_valid):
     if mux.height > 1:
         return mux
-    return _PassThroughFromMux(mux)
+    return _PassThroughFromMux(mux, ready_valid)
 
 
 def create_mux(node: Node, suffix: str = "", width: int = 0, ready_valid=False):
@@ -75,7 +84,7 @@ def create_mux(node: Node, suffix: str = "", width: int = 0, ready_valid=False):
         mux = AOIMuxWrapper(height, width, mux_type=AOIMuxType.RegularReadyValid, name=name)
     else:
         mux = MuxWrapper(height, width, name=name)
-    return flatten_mux(mux)
+    return flatten_mux(mux, ready_valid=ready_valid)
 
 
 class RegFIFO(Generator):
@@ -364,17 +373,15 @@ class ExclusiveNodeFanout(Generator):
 
     def __init__(self, height: int):
         super(ExclusiveNodeFanout, self).__init__(f"ExclusiveNodeFanout_H{height}")
-        for i in range(height):
-            self.input(f"I{i}", 1)
+        self.input("I", height)
         self.output("O", 1)
         sel_size = int(math.pow(2, kratos.clog2(height)))
         self.input("S", sel_size)
         assert height >= 1
 
-        expr = self.ports.I0 & self.ports.S[0]
+        expr = self.ports.I[0] & self.ports.S[0]
         for i in range(1, height):
-            expr = expr | (self.ports[f"I{i}"] & self.ports[f"S{i}"])
-
+            expr = expr | (self.ports.I[i] & self.ports.S[i])
 
         self.wire(self.ports.O, expr)
 
@@ -477,10 +484,10 @@ class CB(InterconnectConfigurable):
             # ready valid has other stuff
             if ready_valid:
                 self.add_ports(
-                    ready_in=magma.In(magma.Bits[1]),
-                    ready_out=magma.Out(magma.Bits[self.mux.height]),
+                    ready_in=magma.In(magma.Bit),
+                    ready_out=magma.Out(magma.Bit),
                     valid_in=magma.In(magma.Bits[self.mux.height]),
-                    valid_out=magma.Out(magma.Bits[1])
+                    valid_out=magma.Out(magma.Bit)
                 )
                 for port_type in ["ready", "valid"]:
                     for direction in ["in", "out"]:
@@ -597,6 +604,8 @@ class SB(InterconnectConfigurable):
 
         # ready valid interface
         self.__wire_reg_reset()
+        self.__connect_nodes_fanin()
+        self.__lift_ready_valid()
 
         # extra hashing because we don't represent it in the module name
         _hash = hash(self)
@@ -627,7 +636,7 @@ class SB(InterconnectConfigurable):
         sbs = self.switchbox.get_all_sbs()
         for sb in sbs:
             sb_name = str(sb)
-            self.sb_muxs[sb_name] = (sb, create_mux(sb))
+            self.sb_muxs[sb_name] = (sb, create_mux(sb, ready_valid=self.ready_valid))
 
     def __create_reg_mux(self):
         for _, reg_mux in self.switchbox.reg_muxs.items():
@@ -650,7 +659,7 @@ class SB(InterconnectConfigurable):
             # we use the sb_name instead so that when we lift the port up,
             # we can use the mux output instead
             sb_name = str(sb_node)
-            self.reg_muxs[sb_name] = (reg_mux, create_mux(reg_mux))
+            self.reg_muxs[sb_name] = (reg_mux, create_mux(reg_mux, ready_valid=self.ready_valid))
 
     def __create_reg(self):
         for reg_name, reg_node in self.switchbox.registers.items():
@@ -743,7 +752,6 @@ class SB(InterconnectConfigurable):
                         self.wire(mux.ports.O, reg.ports.I)
                         if self.ready_valid:
                             self.wire(mux.ports.valid_out, reg.ports.valid_in)
-                            self.wire(mux.ports.ready_out, reg.ports.ready_in)
                     elif isinstance(node, RegisterMuxNode):
                         assert len(node.get_conn_in()) == 2
                         idx = node.get_conn_in().index(sb)
@@ -792,7 +800,7 @@ class SB(InterconnectConfigurable):
         sb_index = rmux.get_conn_in().index(sb)
         self.wire(sb_fanout.ports.I[reg_index], reg_circuit.ports.ready_out)
         self.wire(sb_fanout.ports.I[sb_index], rmux_circuit.ports.ready_out)
-        self.wire(sb_fanout.ports.O, sb_circuit.ports.ready_in)
+        self.wire(sb_fanout.ports.O[0], sb_circuit.ports.ready_in)
         # use rmux selection
         self.wire(sb_fanout.ports.S, rmux_circuit.ports.out_sel)
 
@@ -805,8 +813,8 @@ class SB(InterconnectConfigurable):
             sb: SwitchBoxNode = n
             assert sb.io == SwitchBoxIO.SB_OUT
             sb_circuit = self.sb_muxs[str(sb)][1]
-            self.wire(fanout.ports.I[idx], sb_circuit.ports.ready_out)
-            self.wire(fanout.ports.S[idx], sb_circuit.ports.out_sel)
+            self.wire(fanout.ports[f"I{idx}"][0], sb_circuit.ports.ready_out)
+            self.wire(fanout.ports[f"S{idx}"], sb_circuit.ports.out_sel)
         # get the node circuit
         if isinstance(node, SwitchBoxNode):
             port = self.sb_muxs[str(node)][1].ports.ready_in
@@ -814,14 +822,42 @@ class SB(InterconnectConfigurable):
             # has to be a port
             assert isinstance(node, PortNode)
             port = self.ports[f"{node.name}_ready_in"]
-        self.wire(fanout.ports.O, port)
+        self.wire(fanout.ports.O[0], port)
 
     def __connect_nodes_fanin(self):
         if not self.ready_valid:
             return
         for sb, _ in self.sb_muxs.values():
-            if len(sb) > 1:
+            if sb.io == SwitchBoxIO.SB_IN:
                 self.handle_node_fanin(sb)
+
+    def __lift_ready_valid(self):
+        # lift ready valid signals from the muxes to the top
+        # in this way we can connect them to each other in the
+        if not self.ready_valid:
+            return
+        for sb_name, (sb, mux) in self.sb_muxs.items():
+            port_name = create_name(sb_name)
+            in_bit = magma.In(magma.Bit)
+            out_bit = magma.Out(magma.Bit)
+            if sb.io == SwitchBoxIO.SB_IN:
+                self.add_port(port_name + "_ready_in", in_bit)
+                self.add_port(port_name + "_valid_in", in_bit)
+                self.wire(self.ports[port_name + "_ready_in"], mux.ports.ready_in)
+                self.wire(self.ports[port_name + "_valid_in"], mux.ports.valid_in)
+            else:
+                self.add_port(port_name + "_ready_out", out_bit)
+                self.add_port(port_name + "_valid_out", out_bit)
+
+                # to see if we have a register mux here
+                # if so , we need to lift the reg_mux output instead
+                if sb_name in self.reg_muxs:
+                    # override the mux value
+                    node, mux = self.reg_muxs[sb_name]
+                    assert isinstance(node, RegisterMuxNode)
+                    assert node in sb
+                self.wire(self.ports[port_name + "_ready_out"], mux.ports.ready_out)
+                self.wire(self.ports[port_name + "_valid_out"], mux.ports.valid_out)
 
 
 class TileCircuit(GemstoneGenerator):
