@@ -448,6 +448,29 @@ class InclusiveNodeFanout(Generator):
         return FromMagma(circuit)
 
 
+class ReadyValidLoopBack(Generator):
+    __cache = None
+
+    def __init__(self):
+        super(ReadyValidLoopBack, self).__init__("ReadyValidLoopBack")
+        ri = self.input("ready_in", 1)
+        vi = self.input("valid_in", 1)
+        vo = self.output("valid_out", 1)
+        ro = self.output("ready_out", 1)
+
+        self.wire(ri, ro)
+        self.wire(vo, ri & vi)
+
+    @staticmethod
+    def get():
+        if ReadyValidLoopBack.__cache is None:
+            inst = ReadyValidLoopBack()
+            circuit = kratos.util.to_magma(inst)
+            ReadyValidLoopBack.__cache = circuit
+        circuit = ReadyValidLoopBack.__cache
+        return FromMagma(circuit)
+
+
 class InterconnectConfigurable(Configurable):
     pass
 
@@ -469,7 +492,7 @@ class CB(InterconnectConfigurable):
         # lift the port to the top level
         self.add_ports(O=self.mux.ports.O.base_type())
         self.wire(self.ports.O, self.mux.ports.O)
-        self.add_ports(I=magma.In(magma.Array[self.mux.height, magma.Bits[self.mux.width]]))
+        self.add_ports(I=self.mux.ports.I.base_type())
         self.wire(self.ports.I, self.mux.ports.I)
 
         if self.mux.height > 1:
@@ -493,7 +516,8 @@ class CB(InterconnectConfigurable):
                 for port_type in ["ready", "valid"]:
                     for direction in ["in", "out"]:
                         port_name = f"{port_type}_{direction}"
-                        self.wire(self.ports[port_name], self.mux.ports[port_name])
+                        self.wire(self.ports[port_name],
+                                  self.mux.ports[port_name])
 
         else:
             # remove clk and reset ports from the base class since it's going
@@ -883,7 +907,8 @@ class TileCircuit(GemstoneGenerator):
                  tile_id_width: int = 16,
                  full_config_addr_width: int = 32,
                  stall_signal_width: int = 4,
-                 double_buffer: bool = False):
+                 double_buffer: bool = False,
+                 ready_valid: bool = False):
         super().__init__()
 
         # turn off hashing because we controls that hashing here

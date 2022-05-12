@@ -88,3 +88,7 @@ def test_empty_tile_util():
     with tempfile.TemporaryDirectory() as tempdir:
         filename = os.path.join(tempdir, "interconnect")
         magma.compile(filename, circuit, output="coreir-verilog")
+
+
+if __name__ == "__main__":
+    test_empty_switch_box()

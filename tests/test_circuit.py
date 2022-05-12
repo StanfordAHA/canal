@@ -94,7 +94,7 @@ def test_cb_ready_valid():
         ready = fault.random_bv(1)
         tester.poke(circuit.ready_in, ready)
         tester.eval()
-        tester.expect(circuit.ready_out[config_data.as_uint()], ready)
+        tester.expect(circuit.ready_out, ready)
 
     with tempfile.TemporaryDirectory() as tempdir:
         sv_files = AOIMuxWrapper.get_sv_files()
@@ -312,11 +312,16 @@ def test_sb_ready_valid():
     node5 = switchbox.get_reg_mux(SwitchBoxSide.EAST, 0)
     node6 = switchbox.get_reg_mux(SwitchBoxSide.SOUTH, 0)
 
-    config_data = [sb_circuit.get_config_data(get_mux_sel_name(node2), node2.get_conn_in().index(node1)),
-                   sb_circuit.get_config_data(get_mux_sel_name(node3), node3.get_conn_in().index(node1)),
-                   sb_circuit.get_config_data(get_mux_sel_name(node5), node5.get_conn_in().index(node4)),
-                   sb_circuit.get_config_data(get_mux_sel_name(node6), node6.get_conn_in().index(node3)),
-                   sb_circuit.get_config_data(str(node2), 1), sb_circuit.get_config_data(str(node3), 1)]
+    config_data = [sb_circuit.get_config_data(get_mux_sel_name(node2),
+                                              node2.get_conn_in().index(node1)),
+                   sb_circuit.get_config_data(get_mux_sel_name(node3),
+                                              node3.get_conn_in().index(node1)),
+                   sb_circuit.get_config_data(get_mux_sel_name(node5),
+                                              node5.get_conn_in().index(node4)),
+                   sb_circuit.get_config_data(get_mux_sel_name(node6),
+                                              node6.get_conn_in().index(node3)),
+                   sb_circuit.get_config_data(str(node2), 1),
+                   sb_circuit.get_config_data(str(node3), 1)]
     # also enable the mux that gets connected to
     config_data = compress_config_data(config_data)
 
@@ -871,4 +876,4 @@ def test_double_buffer():
 
 
 if __name__ == "__main__":
-    test_sb_ready_valid()
+    test_cb_ready_valid()
