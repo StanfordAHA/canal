@@ -20,7 +20,8 @@ from gemstone.generator.generator import Generator as GemstoneGenerator
 from gemstone.generator.from_magma import FromMagma
 from mantle import DefineRegister
 from gemstone.generator.const import Const
-from kratos import Generator, posedge, negedge, always_comb, always_ff, clog2, const
+from kratos import Generator, posedge, negedge, always_comb, always_ff, clog2, \
+    const
 
 
 def create_name(name: str):
@@ -81,7 +82,8 @@ def create_mux(node: Node, suffix: str = "", width: int = 0, ready_valid=False):
     if width == 0:
         width = node.width
     if ready_valid:
-        mux = AOIMuxWrapper(height, width, mux_type=AOIMuxType.RegularReadyValid, name=name)
+        mux = AOIMuxWrapper(height, width,
+                            mux_type=AOIMuxType.RegularReadyValid, name=name)
     else:
         mux = MuxWrapper(height, width, name=name)
     return flatten_mux(mux, ready_valid=ready_valid)
@@ -92,6 +94,7 @@ class RegFIFO(Generator):
     This module generates register-based FIFOs. These are useful
     when we only need a few entries with no prefetching needed
     '''
+
     def __init__(self,
                  data_width,
                  width_mult,
@@ -177,7 +180,8 @@ class RegFIFO(Generator):
         # self.wire(self._full, (self._wr_ptr + 1) == self._rd_ptr)
         self.wire(self._full, self._num_items == self.depth)
         # Experiment to cover latency
-        self.wire(self._almost_full, self._num_items >= (self.depth - self.almost_full_diff))
+        self.wire(self._almost_full,
+                  self._num_items >= (self.depth - self.almost_full_diff))
         # self.wire(self._empty, self._wr_ptr == self._rd_ptr)
         self.wire(self._empty, self._num_items == 0)
 
@@ -197,7 +201,8 @@ class RegFIFO(Generator):
             self.add_code(self.rd_ptr_ff_parallel)
             self.wire(self._parallel_out, self._reg_array)
             self.wire(self._write,
-                      self._push & ~self._passthru & (~self._full | (self._parallel_read)))
+                      self._push & ~self._passthru & (
+                                  ~self._full | (self._parallel_read)))
         else:
             # self.wire(self._write, self._push & ~self._passthru & (~self._full | self._pop))
             # Don't want to write when full at all for decoupling
@@ -274,7 +279,7 @@ class RegFIFO(Generator):
 
     @always_comb
     def data_out_ff(self):
-        if(self._passthru):
+        if (self._passthru):
             self._data_out = self._data_in
         else:
             self._data_out = self._reg_array[self._rd_ptr]
@@ -353,8 +358,10 @@ class FifoRegWrapper(GemstoneGenerator):
         # need an inverter for async reset
         async_inverter = FromMagma(mantle.Not)
         async_inverter.instance_name = "async_inverter"
-        self.wire(self.ports.ASYNCRESET, self.convert(async_inverter.ports.I, magma.asyncreset))
-        self.wire(self.convert(async_inverter.ports.O, magma.asyncreset), self.__circuit.ports.rst_n)
+        self.wire(self.ports.ASYNCRESET,
+                  self.convert(async_inverter.ports.I, magma.asyncreset))
+        self.wire(self.convert(async_inverter.ports.O, magma.asyncreset),
+                  self.__circuit.ports.rst_n)
         self.wire(self.ports.valid_in, self.__circuit.ports.push[0])
         self.wire(self.ports.valid_out, self.__circuit.ports.valid[0])
         self.wire(self.ports.ready_in, self.__circuit.ports["pop"][0])
@@ -372,7 +379,8 @@ class ExclusiveNodeFanout(Generator):
     __cache = {}
 
     def __init__(self, height: int):
-        super(ExclusiveNodeFanout, self).__init__(f"ExclusiveNodeFanout_H{height}")
+        super(ExclusiveNodeFanout, self).__init__(
+            f"ExclusiveNodeFanout_H{height}")
         self.input("I", height)
         self.output("O", 1)
         sel_size = int(math.pow(2, kratos.clog2(height)))
@@ -411,7 +419,8 @@ class InclusiveNodeFanout(Generator):
 
         temp_vars = []
         for idx, n in enumerate(list(node)):
-            s = self.input(f"S{idx}", InclusiveNodeFanout.get_sel_size(len(n.get_conn_in())))
+            s = self.input(f"S{idx}", InclusiveNodeFanout.get_sel_size(
+                len(n.get_conn_in())))
             i = self.input(f"I{idx}", 1)
             e = self.input(f"E{idx}", 1)
             v = self.var(f"sel{idx}", 1)
@@ -666,7 +675,8 @@ class SB(InterconnectConfigurable):
         sbs = self.switchbox.get_all_sbs()
         for sb in sbs:
             sb_name = str(sb)
-            self.sb_muxs[sb_name] = (sb, create_mux(sb, ready_valid=self.ready_valid))
+            self.sb_muxs[sb_name] = (
+            sb, create_mux(sb, ready_valid=self.ready_valid))
 
             # for ready valid, we need 1-bit config to know whether the mux is being used or not
             if self.ready_valid and len(sb.get_conn_in()) > 0:
@@ -693,7 +703,8 @@ class SB(InterconnectConfigurable):
             # we use the sb_name instead so that when we lift the port up,
             # we can use the mux output instead
             sb_name = str(sb_node)
-            self.reg_muxs[sb_name] = (reg_mux, create_mux(reg_mux, ready_valid=self.ready_valid))
+            self.reg_muxs[sb_name] = (
+            reg_mux, create_mux(reg_mux, ready_valid=self.ready_valid))
 
     def __create_reg(self):
         for reg_name, reg_node in self.switchbox.registers.items():
@@ -774,7 +785,8 @@ class SB(InterconnectConfigurable):
                         input_port = node_mux.ports.I[idx]
                         self.wire(input_port, output_port)
                         if self.ready_valid:
-                            self.wire(node_mux.ports.valid_in[idx], mux.ports.valid_out)
+                            self.wire(node_mux.ports.valid_in[idx],
+                                      mux.ports.valid_out)
 
     def __connect_sb_out(self):
         for _, (sb, mux) in self.sb_muxs.items():
@@ -797,7 +809,8 @@ class SB(InterconnectConfigurable):
                         # wire 2
                         self.wire(mux.ports.O, reg_mux.ports.I[idx])
                         if self.ready_valid:
-                            self.wire(mux.ports.valid_out, reg_mux.ports.valid_in[idx])
+                            self.wire(mux.ports.valid_out,
+                                      reg_mux.ports.valid_in[idx])
 
     def __connect_regs(self):
         for _, (node, reg) in self.regs.items():
@@ -825,7 +838,8 @@ class SB(InterconnectConfigurable):
                 self.wire(reg.ports.ready_in, mux.ports.ready_out)
                 self.__handle_rmux_fanin(sb_node, n, node)
 
-    def __handle_rmux_fanin(self, sb: SwitchBoxNode, rmux: RegisterMuxNode, reg: RegisterNode):
+    def __handle_rmux_fanin(self, sb: SwitchBoxNode, rmux: RegisterMuxNode,
+                            reg: RegisterNode):
         # exclusive because the destination mux can only select one
         sb_fanout = ExclusiveNodeFanout.get(len(sb))
         sb_fanout.instance_name = create_name(str(sb)) + "_FANOUT"
@@ -899,8 +913,10 @@ class SB(InterconnectConfigurable):
             if sb.io == SwitchBoxIO.SB_IN:
                 self.add_port(port_name + "_ready_out", out_bit)
                 self.add_port(port_name + "_valid_in", in_bit)
-                self.wire(self.ports[port_name + "_ready_out"], mux.ports.ready_out)
-                self.wire(self.ports[port_name + "_valid_in"], mux.ports.valid_in)
+                self.wire(self.ports[port_name + "_ready_out"],
+                          mux.ports.ready_out)
+                self.wire(self.ports[port_name + "_valid_in"],
+                          mux.ports.valid_in)
             else:
                 self.add_port(port_name + "_ready_in", in_bit)
                 self.add_port(port_name + "_valid_out", out_bit)
@@ -912,8 +928,10 @@ class SB(InterconnectConfigurable):
                     node, mux = self.reg_muxs[sb_name]
                     assert isinstance(node, RegisterMuxNode)
                     assert node in sb
-                self.wire(self.ports[port_name + "_ready_in"], mux.ports.ready_in)
-                self.wire(self.ports[port_name + "_valid_out"], mux.ports.valid_out)
+                self.wire(self.ports[port_name + "_ready_in"],
+                          mux.ports.ready_in)
+                self.wire(self.ports[port_name + "_valid_out"],
+                          mux.ports.valid_out)
 
 
 class TileCircuit(GemstoneGenerator):
@@ -1065,7 +1083,8 @@ class TileCircuit(GemstoneGenerator):
         for _, cb in self.cbs.items():
             conn_ins = cb.node.get_conn_in()
             for idx, node in enumerate(conn_ins):
-                assert isinstance(node, (SwitchBoxNode, RegisterMuxNode, PortNode))
+                assert isinstance(node,
+                                  (SwitchBoxNode, RegisterMuxNode, PortNode))
                 # for IO tiles they have connections to other tiles
                 if node.x != self.x or node.y != self.y:
                     continue
