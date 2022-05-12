@@ -366,6 +366,14 @@ class SwitchBox:
         self.registers[reg.name] = reg
         self.reg_muxs[reg_mux.name] = reg_mux
 
+    def get_register(self, side: SwitchBoxSide, track: int):
+        name = f"T{track}_{side.name}"
+        return self.registers[name]
+
+    def get_reg_mux(self, side: SwitchBoxSide, track: int):
+        name = f"{int(side.value)}_{track}"
+        return self.reg_muxs[name]
+
     def clone(self):
         switchbox = SwitchBox(self.x, self.y, self.num_track, self.width,
                               self.internal_wires)

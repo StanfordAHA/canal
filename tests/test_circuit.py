@@ -295,10 +295,43 @@ def test_sb_ready_valid():
     sb_circuit.finalize()
     circuit = sb_circuit.circuit()
 
-    # test the sb routing as well
     tester = BasicTester(circuit,
                          circuit.clk,
                          circuit.reset)
+
+    # notice that we choose to use disjoint to make test easier to write
+    # we describe a complex path
+    # in -> out1 -> reg -> rmux
+    #  |     2       4      5
+    #  - -> out2 -> rmux
+    #        3       6
+    node1 = switchbox.get_sb(SwitchBoxSide.WEST, 0, SwitchBoxIO.SB_IN)
+    node2 = switchbox.get_sb(SwitchBoxSide.EAST, 0, SwitchBoxIO.SB_OUT)
+    node3 = switchbox.get_sb(SwitchBoxSide.SOUTH, 0, SwitchBoxIO.SB_OUT)
+    node4 = switchbox.get_register(SwitchBoxSide.EAST, 0)
+    node5 = switchbox.get_reg_mux(SwitchBoxSide.EAST, 0)
+    node6 = switchbox.get_reg_mux(SwitchBoxSide.SOUTH, 0)
+
+    config_data = []
+    config_data.append(sb_circuit.get_config_data(get_mux_sel_name(node2), node2.get_conn_in().index(node1)))
+    config_data.append(sb_circuit.get_config_data(get_mux_sel_name(node3), node3.get_conn_in().index(node1)))
+    config_data.append(sb_circuit.get_config_data(get_mux_sel_name(node5), node5.get_conn_in().index(node4)))
+    config_data.append(sb_circuit.get_config_data(get_mux_sel_name(node6), node6.get_conn_in().index(node3)))
+    # also enable the mux that gets connected to
+    config_data.append(sb_circuit.get_config_data(str(node2), 1))
+    config_data.append(sb_circuit.get_config_data(str(node3), 1))
+    config_data = compress_config_data(config_data)
+
+    tester.zero_inputs()
+    tester.reset()
+
+    for addr, data in config_data:
+        tester.configure(addr, data)
+
+    input_port_name = create_name(str(node1))
+    tester.poke(circuit.interface.ports[input_port_name], 42)
+    tester.eval()
+    tester.expect(circuit.interface.ports[create_name(str(node3))], 42)
 
     with tempfile.TemporaryDirectory() as tempdir:
         sv_files = AOIMuxWrapper.get_sv_files()
@@ -307,8 +340,7 @@ def test_sb_ready_valid():
         tester.compile_and_run(target="verilator",
                                magma_output="coreir-verilog",
                                directory=tempdir,
-                               flags=["-Wno-fatal"])
-
+                               flags=["-Wno-fatal", "--trace"])
 
 
 @pytest.mark.parametrize("sb_ctor", [DisjointSwitchBox,

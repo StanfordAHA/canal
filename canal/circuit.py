@@ -813,7 +813,7 @@ class SB(InterconnectConfigurable):
 
     def handle_node_fanin(self, node: Node):
         fanout = InclusiveNodeFanout.get(node)
-        # fanout ports is I{i} S{i} and sel{i}
+        # fanout ports is I{i} S{i} E{i} and sel{i}
         for idx, n in enumerate(list(node)):
             # need to get the mux the node is connected to
             assert isinstance(n, SwitchBoxNode)
