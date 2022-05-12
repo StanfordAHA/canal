@@ -312,14 +312,12 @@ def test_sb_ready_valid():
     node5 = switchbox.get_reg_mux(SwitchBoxSide.EAST, 0)
     node6 = switchbox.get_reg_mux(SwitchBoxSide.SOUTH, 0)
 
-    config_data = []
-    config_data.append(sb_circuit.get_config_data(get_mux_sel_name(node2), node2.get_conn_in().index(node1)))
-    config_data.append(sb_circuit.get_config_data(get_mux_sel_name(node3), node3.get_conn_in().index(node1)))
-    config_data.append(sb_circuit.get_config_data(get_mux_sel_name(node5), node5.get_conn_in().index(node4)))
-    config_data.append(sb_circuit.get_config_data(get_mux_sel_name(node6), node6.get_conn_in().index(node3)))
+    config_data = [sb_circuit.get_config_data(get_mux_sel_name(node2), node2.get_conn_in().index(node1)),
+                   sb_circuit.get_config_data(get_mux_sel_name(node3), node3.get_conn_in().index(node1)),
+                   sb_circuit.get_config_data(get_mux_sel_name(node5), node5.get_conn_in().index(node4)),
+                   sb_circuit.get_config_data(get_mux_sel_name(node6), node6.get_conn_in().index(node3)),
+                   sb_circuit.get_config_data(str(node2), 1), sb_circuit.get_config_data(str(node3), 1)]
     # also enable the mux that gets connected to
-    config_data.append(sb_circuit.get_config_data(str(node2), 1))
-    config_data.append(sb_circuit.get_config_data(str(node3), 1))
     config_data = compress_config_data(config_data)
 
     tester.zero_inputs()
@@ -329,9 +327,42 @@ def test_sb_ready_valid():
         tester.configure(addr, data)
 
     input_port_name = create_name(str(node1))
+    output_node3 = create_name(str(node3))
+    output_node5 = create_name(str(node2))
     tester.poke(circuit.interface.ports[input_port_name], 42)
+    tester.poke(circuit.interface.ports[input_port_name + "_valid_in"], 1)
+    tester.poke(circuit.interface.ports[output_node3 + "_ready_in"], 1)
+    tester.poke(circuit.interface.ports[output_node5 + "_ready_in"], 1)
     tester.eval()
-    tester.expect(circuit.interface.ports[create_name(str(node3))], 42)
+    tester.expect(circuit.interface.ports[output_node3], 42)
+    tester.expect(circuit.interface.ports[input_port_name + "_ready_out"], 1)
+    # turn off node 3 ready
+    tester.poke(circuit.interface.ports[output_node3 + "_ready_in"], 0)
+    tester.eval()
+    tester.expect(circuit.interface.ports[input_port_name + "_ready_out"], 0)
+    # turn back on
+    tester.poke(circuit.interface.ports[output_node3 + "_ready_in"], 1)
+    # buffer out the FIFO
+    tester.poke(circuit.interface.ports[output_node5 + "_ready_in"], 0)
+    tester.eval()
+    # next cycle
+    tester.step(2)
+    # next output
+    tester.poke(circuit.interface.ports[input_port_name], 43)
+    tester.eval()
+    tester.expect(circuit.interface.ports[output_node5], 42)
+    tester.expect(circuit.interface.ports[output_node3], 43)
+    # should be ready
+    tester.expect(circuit.interface.ports[input_port_name + "_ready_out"], 1)
+    # next cycle
+    tester.step(2)
+    # next output
+    tester.poke(circuit.interface.ports[input_port_name], 44)
+    tester.eval()
+    tester.expect(circuit.interface.ports[output_node5], 42)
+    tester.expect(circuit.interface.ports[output_node3], 44)
+    # should be not ready
+    tester.expect(circuit.interface.ports[input_port_name + "_ready_out"], 0)
 
     with tempfile.TemporaryDirectory() as tempdir:
         sv_files = AOIMuxWrapper.get_sv_files()
@@ -784,6 +815,7 @@ def test_double_buffer():
                                                                 in_port_node)
     output_bitstream = tile_circuit.get_route_bitstream_config(out_port_node,
                                                                output_sb)
+
     # notice that both of them will be configured using the double buffer scheme
 
     def get_config_data(config_data, reg_data):
