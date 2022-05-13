@@ -13,6 +13,12 @@ import pytest
 import shutil
 
 
+def copy_sv_files(tempdir):
+    sv_files = AOIMuxWrapper.get_sv_files()
+    for f in sv_files:
+        shutil.copy(f, tempdir)
+
+
 @pytest.mark.parametrize('num_tracks', [2, 5])
 @pytest.mark.parametrize('bit_width', [1, 16])
 def test_cb(num_tracks: int, bit_width: int):
@@ -97,9 +103,7 @@ def test_cb_ready_valid():
         tester.expect(circuit.ready_out, ready)
 
     with tempfile.TemporaryDirectory() as tempdir:
-        sv_files = AOIMuxWrapper.get_sv_files()
-        for f in sv_files:
-            shutil.copy(f, tempdir)
+        copy_sv_files(tempdir)
         tester.compile_and_run(target="verilator",
                                magma_output="coreir-verilog",
                                directory=tempdir,
@@ -370,9 +374,7 @@ def test_sb_ready_valid():
     tester.expect(circuit.interface.ports[input_port_name + "_ready_out"], 0)
 
     with tempfile.TemporaryDirectory() as tempdir:
-        sv_files = AOIMuxWrapper.get_sv_files()
-        for f in sv_files:
-            shutil.copy(f, tempdir)
+        copy_sv_files(tempdir)
         tester.compile_and_run(target="verilator",
                                magma_output="coreir-verilog",
                                directory=tempdir,
@@ -948,6 +950,15 @@ def test_tile_ready_valid():
     tile_circuit.finalize()
 
     circuit = tile_circuit.circuit()
+
+    tester = BasicTester(circuit, circuit.clk, circuit.reset)
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        copy_sv_files(tempdir)
+        tester.compile_and_run(target="verilator",
+                               magma_output="coreir-verilog",
+                               directory=tempdir,
+                               flags=["-Wno-fatal"])
 
 
 if __name__ == "__main__":
