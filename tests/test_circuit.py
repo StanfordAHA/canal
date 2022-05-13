@@ -376,7 +376,7 @@ def test_sb_ready_valid():
         tester.compile_and_run(target="verilator",
                                magma_output="coreir-verilog",
                                directory=tempdir,
-                               flags=["-Wno-fatal", "--trace"])
+                               flags=["-Wno-fatal"])
 
 
 @pytest.mark.parametrize("sb_ctor", [DisjointSwitchBox,
@@ -530,6 +530,20 @@ class AdditionalDummyCore(ConfigurableCore):
         return "DummyCore2"
 
 
+def get_in_out_connections(num_tracks):
+    input_connections = []
+    for track in range(num_tracks):
+        for side in SwitchBoxSide:
+            input_connections.append(SBConnectionType(side, track,
+                                                      SwitchBoxIO.SB_IN))
+    output_connections = []
+    for track in range(num_tracks):
+        for side in SwitchBoxSide:
+            output_connections.append(SBConnectionType(side, track,
+                                                       SwitchBoxIO.SB_OUT))
+    return input_connections, output_connections
+
+
 # 5 is too slow
 @pytest.mark.parametrize('num_tracks', [2, 4])
 @pytest.mark.parametrize("add_additional_core", [True, False])
@@ -562,18 +576,9 @@ def test_tile(num_tracks: int, add_additional_core: bool):
         tiles[bit_width] = tile
 
     # set the core and core connection
-    # here all the input ports are connect to SB_IN and all output ports are
+    # here all the input ports are connected to SB_IN and all output ports are
     # connected to SB_OUT
-    input_connections = []
-    for track in range(num_tracks):
-        for side in SwitchBoxSide:
-            input_connections.append(SBConnectionType(side, track,
-                                                      SwitchBoxIO.SB_IN))
-    output_connections = []
-    for track in range(num_tracks):
-        for side in SwitchBoxSide:
-            output_connections.append(SBConnectionType(side, track,
-                                                       SwitchBoxIO.SB_OUT))
+    input_connections, output_connections = get_in_out_connections(num_tracks)
 
     for bit_width, tile in tiles.items():
         tile.set_core(core)
@@ -756,18 +761,9 @@ def test_double_buffer():
         tiles[bit_width] = tile
 
     # set the core and core connection
-    # here all the input ports are connect to SB_IN and all output ports are
+    # here all the input ports are connected to SB_IN and all output ports are
     # connected to SB_OUT
-    input_connections = []
-    for track in range(num_tracks):
-        for side in SwitchBoxSide:
-            input_connections.append(SBConnectionType(side, track,
-                                                      SwitchBoxIO.SB_IN))
-    output_connections = []
-    for track in range(num_tracks):
-        for side in SwitchBoxSide:
-            output_connections.append(SBConnectionType(side, track,
-                                                       SwitchBoxIO.SB_OUT))
+    input_connections, output_connections = get_in_out_connections(num_tracks)
 
     for bit_width, tile in tiles.items():
         tile.set_core(core)
@@ -875,5 +871,84 @@ def test_double_buffer():
                                flags=["-Wno-fatal"])
 
 
+class ReadyValidCore(ConfigurableCore):
+    def __init__(self):
+        super().__init__(8, 32)
+
+        bit_in = magma.BitIn
+        bit_out = magma.BitOut
+        self.add_ports(
+            data_in_16b=magma.In(magma.Bits[16]),
+            data_out_16b=magma.Out(magma.Bits[16]),
+            data_in_16b_ready=bit_out,
+            data_in_16b_valid=bit_in,
+            data_out_16b_ready=bit_in,
+            data_out_16b_valid=bit_out
+        )
+
+        self.remove_port("read_config_data")
+        self.remove_port("reset")
+
+        # Dummy core just passes inputs through to outputs
+        self.wire(self.ports.data_in_16b, self.ports.data_out_16b)
+        self.wire(self.ports.data_in_16b_ready, self.ports.data_out_16b_ready)
+        self.wire(self.ports.data_in_16b_valid, self.ports.data_out_16b_valid)
+
+    def get_config_bitstream(self, instr):
+        raise NotImplementedError()
+
+    def instruction_type(self):
+        raise NotImplementedError()
+
+    def inputs(self):
+        return [self.ports.data_in_16b]
+
+    def outputs(self):
+        return [self.ports.data_out_16b]
+
+    def eval_model(self, **kargs):
+        pass
+
+    def name(self):
+        return "ReadyValidCore"
+
+
+@pytest.mark.skip(reason="broken so far")
+def test_tile_ready_valid():
+    tile_id_width = 16
+    x = 0
+    y = 0
+    num_tracks = 2
+    addr_width = 8
+    data_width = 32
+
+    dummy_core = ReadyValidCore()
+    core = CoreInterface(dummy_core)
+
+    # we use disjoint switch here
+    bit_width = 16
+    switchbox = DisjointSwitchBox(x, y, num_tracks, bit_width)
+    tile = Tile(x, y, bit_width, switchbox)
+
+    input_connections, output_connections = get_in_out_connections(num_tracks)
+
+    tile.set_core(core)
+
+    input_port_name = f"data_in_{bit_width}b"
+    output_port_name = f"data_out_{bit_width}b"
+
+    tile.set_core_connection(input_port_name, input_connections)
+    tile.set_core_connection(output_port_name, output_connections)
+
+    tile_circuit = TileCircuit({16: tile}, addr_width, data_width,
+                               tile_id_width=tile_id_width,
+                               ready_valid=True)
+
+    # finalize it
+    tile_circuit.finalize()
+
+    circuit = tile_circuit.circuit()
+
+
 if __name__ == "__main__":
-    test_cb_ready_valid()
+    test_tile_ready_valid()
