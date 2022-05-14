@@ -790,6 +790,9 @@ class SB(InterconnectConfigurable):
                         if self.ready_valid:
                             self.wire(node_mux.ports.valid_in[idx],
                                       mux.ports.valid_out)
+                            # TODO: FIX THIS
+                            self.wire(node_mux.ports.valid_in[idx],
+                                      Const(1))
 
     def __connect_sb_out(self):
         for _, (sb, mux) in self.sb_muxs.items():
@@ -1067,21 +1070,14 @@ class TileCircuit(GemstoneGenerator):
                 port = switchbox.ports[sb_name]
                 if node.io == SwitchBoxIO.SB_IN:
                     self.add_port(sb_name, magma.In(port.base_type()))
-                    # FIXME:
-                    #   lots of magma bugs
-                    self.wire(self.ports[sb_name], mux.ports.I)
 
                     if self.ready_valid:
                         vi = self.add_port(sb_name + "_valid", bit_in)
                         ro = self.add_port(sb_name + "_ready", bit_out)
                         self.wire(vi, switchbox.ports[sb_name + "_valid_in"])
                         self.wire(ro, switchbox.ports[sb_name + "_ready_out"])
-                        # TODO: FIX BELOW
-                        self.wire(vi, mux.ports.valid_in)
-                        self.wire(vi, mux.ports.ready_in)
                 else:
                     self.add_port(sb_name, magma.Out(port.base_type()))
-                    print(sb_name)
                     if self.ready_valid:
                         vo = self.add_port(sb_name + "_valid", bit_out)
                         ri = self.add_port(sb_name + "_ready", bit_in)
@@ -1090,6 +1086,7 @@ class TileCircuit(GemstoneGenerator):
                         self.wire(ri, switchbox.ports[sb_name + "_ready_in"])
 
                         # TODO: FIX BELOW
+                        print(id(switchbox))
                         switchbox.wire(Const(0), mux.ports.valid_in)
 
                 assert port.owner() == switchbox
@@ -1110,14 +1107,14 @@ class TileCircuit(GemstoneGenerator):
                     # get the internal wire
                     n, sb_mux = sb_circuit.sb_muxs[str(node)]
                     assert n == node
+                    sb_name = create_name(str(node))
                     if node.io == SwitchBoxIO.SB_IN:
-                        self.wire(sb_mux.ports.O, cb.ports.I[idx])
+                        self.wire(self.ports[sb_name], cb.ports.I[idx])
                         if self.ready_valid:
                             port_name = create_name(str(node)) + "_valid"
                             self.wire(self.ports[port_name],
                                       cb.ports.valid_in[idx])
                     else:
-                        sb_name = create_name(str(node))
                         self.wire(sb_circuit.ports[sb_name], cb.ports.I[idx])
                 else:
                     # this is an additional core port

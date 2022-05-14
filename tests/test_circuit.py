@@ -954,6 +954,7 @@ def test_tile_ready_valid():
     tester = BasicTester(circuit, circuit.clk, circuit.reset)
 
     with tempfile.TemporaryDirectory() as tempdir:
+        tempdir = "temp"
         copy_sv_files(tempdir)
         tester.compile_and_run(target="verilator",
                                magma_output="coreir-verilog",
