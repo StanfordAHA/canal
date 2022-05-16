@@ -103,7 +103,7 @@ class RegFIFO(Generator):
                  break_out_rd_ptr=False,
                  almost_full_diff=2):
 
-        super().__init__(f"reg_fifo_d_{depth}_w_{width_mult}")
+        super().__init__(f"reg_fifo_d_{depth}_w_{width_mult}_D_{data_width}")
 
         self.data_width = self.parameter("data_width", 16)
         self.data_width.value = data_width
