@@ -467,9 +467,7 @@ class ReadyValidLoopBack(Generator):
         ri = self.input("ready_in", 1)
         vi = self.input("valid_in", 1)
         vo = self.output("valid_out", 1)
-        ro = self.output("ready_out", 1)
 
-        self.wire(ri, ro)
         self.wire(vo, ri & vi)
 
     @staticmethod
@@ -790,9 +788,6 @@ class SB(InterconnectConfigurable):
                         if self.ready_valid:
                             self.wire(node_mux.ports.valid_in[idx],
                                       mux.ports.valid_out)
-                            # TODO: FIX THIS
-                            self.wire(node_mux.ports.valid_in[idx],
-                                      Const(1))
 
     def __connect_sb_out(self):
         for _, (sb, mux) in self.sb_muxs.items():
@@ -905,6 +900,19 @@ class SB(InterconnectConfigurable):
             port = self.ports[port_name]
 
         self.wire(fanout.ports.O[0], port)
+
+    def add_port_valid(self, node: PortNode):
+        valid_port = node.name + "_valid"
+        port = self.add_port(valid_port, magma.BitIn)
+        assert len(node.get_conn_in()) == 0
+        for n in node:
+            assert isinstance(n, SwitchBoxNode)
+            assert n.io == SwitchBoxIO.SB_OUT
+            idx = n.get_conn_in().index(node)
+            mux = self.sb_muxs[str(n)][1]
+            self.wire(mux.ports.valid_in[idx], port)
+
+        return port
 
     def __connect_nodes_fanin(self):
         if not self.ready_valid:
@@ -1085,10 +1093,6 @@ class TileCircuit(GemstoneGenerator):
                         self.wire(vo, switchbox.ports[sb_name + "_valid_out"])
                         self.wire(ri, switchbox.ports[sb_name + "_ready_in"])
 
-                        # TODO: FIX BELOW
-                        print(id(switchbox))
-                        switchbox.wire(Const(0), mux.ports.valid_in)
-
                 assert port.owner() == switchbox
                 self.wire(self.ports[sb_name], port)
 
@@ -1158,12 +1162,18 @@ class TileCircuit(GemstoneGenerator):
 
                 if self.ready_valid:
                     # need to create fan-in logic
-                    # TODO: add loopback module
                     sb_circuit.handle_node_fanin(port_node)
                     ready_in = port_node.name + "_ready"
                     ready_out = port_node.name + "_ready_out"
                     self.wire(sb_circuit.ports[ready_out],
                               self.core.ports[ready_in])
+                    valid_port = sb_circuit.add_port_valid(port_node)
+                    loop_back = ReadyValidLoopBack.get()
+                    loop_back.instance_name = port_node.name + "_loopback"
+                    self.wire(loop_back.ports.ready_in[0], sb_circuit.ports[ready_out])
+                    valid_out = port_node.name + "_valid"
+                    self.wire(loop_back.ports.valid_in[0], self.core.ports[valid_out])
+                    self.wire(loop_back.ports.valid_out[0], valid_port)
 
         # CB ready-valid
         if self.ready_valid:
