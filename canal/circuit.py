@@ -529,9 +529,9 @@ class CB(InterconnectConfigurable):
                         self.wire(self.ports[port_name],
                                   self.mux.ports[port_name])
                 self.wire(self.ports.out_sel, self.mux.ports.out_sel)
-                self.add_config(self.node.name, 1)
+                self.add_config(str(node), 1)
                 enable = self.add_port("enable", magma.BitOut)
-                self.wire(enable, self.registers[self.node.name].ports.O[0])
+                self.wire(enable, self.registers[str(node)].ports.O[0])
 
         else:
             # remove clk and reset ports from the base class since it's going
@@ -1433,7 +1433,10 @@ class TileCircuit(GemstoneGenerator):
     def features(self) -> List[GemstoneGenerator]:
         return self.__features
 
-    def get_route_bitstream_config(self, src_node: Node, dst_node: Node):
+    __CONFIG_TYPE = Tuple[int, int, int]
+    __BITSTREAM_TYPE = Union[__CONFIG_TYPE, Tuple[__CONFIG_TYPE, __CONFIG_TYPE]]
+
+    def get_route_bitstream_config(self, src_node: Node, dst_node: Node) -> __BITSTREAM_TYPE:
         assert src_node.width == dst_node.width
         tile = self.tiles[src_node.width]
         assert dst_node.x == tile.x and dst_node.y == tile.y, \
@@ -1454,7 +1457,20 @@ class TileCircuit(GemstoneGenerator):
         reg_name = get_mux_sel_name(dst_node)
         reg_idx, config_data = circuit.get_config_data(reg_name, config_data)
         feature_addr = self.features().index(circuit)
-        return reg_idx, feature_addr, config_data
+        base_config = reg_idx, feature_addr, config_data
+        if self.ready_valid:
+            # need to get mux enable if necessary
+            circuit = None
+            if isinstance(dst_node, SwitchBoxNode):
+                circuit = self.sbs[src_node.width]
+            elif isinstance(dst_node, PortNode):
+                circuit = self.cbs[dst_node.name]
+            if circuit is not None:
+                reg_idx, config_data = circuit.get_config_data(str(dst_node), 1)
+                feature_addr = self.features().index(circuit)
+                additional_config = reg_idx, feature_addr, config_data
+                return base_config, additional_config
+        return base_config
 
     def __lift_ports(self):
         # lift the internal ports only if we have empty switch boxes

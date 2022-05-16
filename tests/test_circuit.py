@@ -162,6 +162,12 @@ def find_reg_mux_node(node: Node) -> Union[Tuple[None, None],
     return None, None
 
 
+def insert_pipeline_registers(sb: SwitchBox):
+    for side in SwitchBoxSide:
+        for track in range(sb.num_track):
+            sb.add_pipeline_register(side, track)
+
+
 @pytest.mark.parametrize('num_tracks', [2, 5])
 @pytest.mark.parametrize('bit_width', [1, 16])
 @pytest.mark.parametrize("sb_ctor", [DisjointSwitchBox,
@@ -180,9 +186,7 @@ def test_sb(num_tracks: int, bit_width: int, sb_ctor,
     reg_mode, batch_size = reg
     # insert registers to every sides and tracks
     if reg_mode:
-        for side in SwitchBoxSide:
-            for track in range(num_tracks):
-                switchbox.add_pipeline_register(side, track)
+        insert_pipeline_registers(switchbox)
 
     sb_circuit = SB(switchbox, addr_width, data_width)
     sb_circuit.finalize()
@@ -291,9 +295,7 @@ def test_sb_ready_valid():
 
     switchbox = DisjointSwitchBox(0, 0, 5, 16)
     # insert registers to every side and tracks
-    for side in SwitchBoxSide:
-        for track in range(num_tracks):
-            switchbox.add_pipeline_register(side, track)
+    insert_pipeline_registers(switchbox)
 
     sb_circuit = SB(switchbox, addr_width, data_width, ready_valid=True)
     sb_circuit.finalize()
@@ -396,9 +398,7 @@ def test_stall(sb_ctor):
     switchbox = sb_ctor(0, 0, num_tracks, bit_width)
     # insert registers to every sides and tracks
 
-    for side in SwitchBoxSide:
-        for track in range(num_tracks):
-            switchbox.add_pipeline_register(side, track)
+    insert_pipeline_registers(switchbox)
 
     sb_circuit = SB(switchbox, addr_width, data_width, stall_signal_width=1)
     sb_circuit.finalize()
@@ -931,6 +931,8 @@ def test_tile_ready_valid():
     bit_width = 16
     switchbox = DisjointSwitchBox(x, y, num_tracks, bit_width)
     tile = Tile(x, y, bit_width, switchbox)
+    insert_pipeline_registers(tile.switchbox)
+    switchbox = tile.switchbox
 
     input_connections, output_connections = get_in_out_connections(num_tracks)
 
@@ -953,8 +955,46 @@ def test_tile_ready_valid():
 
     tester = BasicTester(circuit, circuit.clk, circuit.reset)
 
+    tester.zero_inputs()
+    tester.reset()
+
+    # we describe a route
+    node1 = switchbox.get_sb(SwitchBoxSide.WEST, 0, SwitchBoxIO.SB_IN)
+    node2 = tile.get_port("data_in_16b")
+    node3 = tile.get_port("data_out_16b")
+    node4 = switchbox.get_sb(SwitchBoxSide.EAST, 0, SwitchBoxIO.SB_OUT)
+    node5 = switchbox.get_reg_mux(SwitchBoxSide.EAST, 0)
+
+    raw_config_data = [tile_circuit.get_route_bitstream_config(node1, node2),
+                       tile_circuit.get_route_bitstream_config(node3, node4),
+                       tile_circuit.get_route_bitstream_config(node4, node5)]
+    config_data = []
+    for entry in raw_config_data:
+        def add_config(value):
+            reg, feat, d = value
+            a = reg << 24 | (feat << 16)
+            config_data.append((a, d))
+        if isinstance(entry[0], tuple):
+            add_config(entry[0])
+            add_config(entry[1])
+        else:
+            add_config(entry)
+
+    config_data = compress_config_data(config_data)
+
+    for addr, data in config_data:
+        tester.configure(addr, data)
+
+    input_port_name = create_name(str(node1))
+    output_port_name = create_name(str(node4))
+
+    tester.poke(circuit.interface.ports[input_port_name + "_valid"], 1)
+    tester.poke(circuit.interface.ports[output_port_name + "_ready"], 1)
+    tester.eval()
+    # the upstream ready should be high
+    tester.expect(circuit.interface.ports[input_port_name + "_ready"], 1)
+
     with tempfile.TemporaryDirectory() as tempdir:
-        tempdir = "temp"
         copy_sv_files(tempdir)
         tester.compile_and_run(target="verilator",
                                magma_output="coreir-verilog",
