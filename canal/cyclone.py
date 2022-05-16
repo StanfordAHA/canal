@@ -1134,3 +1134,13 @@ class SwitchBoxHelper:
             result.append((track, SwitchBoxSide.NORTH,
                            track, SwitchBoxSide.SOUTH))
         return result
+
+
+def create_name(name: str):
+    tokens = " (),"
+    for t in tokens:
+        name = name.replace(t, "_")
+    name = name.replace("__", "_")
+    if name[-1] == "_":
+        name = name[:-1]
+    return name

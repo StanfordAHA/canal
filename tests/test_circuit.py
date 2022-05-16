@@ -88,10 +88,8 @@ def test_cb_ready_valid():
 
     for config_data in [BitVector[data_width](x) for x in range(num_tracks)]:
         tester.reset()
-        tester.configure(BitVector[addr_width](0), config_data)
-        tester.config_read(BitVector[addr_width](0))
-        tester.eval()
-        tester.expect(circuit.read_config_data, config_data)
+        tester.configure(*cb.get_config_data("CB_data_in_sel",
+                                             config_data))
         inputs = [fault.random.random_bv(1) for _ in range(num_tracks)]
         for i, input_ in enumerate(inputs):
             tester.poke(circuit.valid_in[i], BitVector[1](input_))
@@ -326,8 +324,8 @@ def test_sb_ready_valid():
                                               node5.get_conn_in().index(node4)),
                    sb_circuit.get_config_data(get_mux_sel_name(node6),
                                               node6.get_conn_in().index(node3)),
-                   sb_circuit.get_config_data(str(node2), 1),
-                   sb_circuit.get_config_data(str(node3), 1)]
+                   sb_circuit.get_config_data(str(node2) + "_enable", 1),
+                   sb_circuit.get_config_data(str(node3) + "_enable", 1)]
     # also enable the mux that gets connected to
     config_data = compress_config_data(config_data)
 
@@ -873,7 +871,6 @@ def test_double_buffer():
                                flags=["-Wno-fatal"])
 
 
-@pytest.mark.skip(reason="broken so far")
 def test_tile_ready_valid():
     tile_id_width = 16
     x = 0
@@ -961,4 +958,4 @@ def test_tile_ready_valid():
 
 
 if __name__ == "__main__":
-    test_tile_ready_valid()
+    test_sb_ready_valid()
