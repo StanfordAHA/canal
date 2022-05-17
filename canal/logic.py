@@ -53,6 +53,9 @@ class RegFIFO(Generator):
                                      explicit_array=True,
                                      packed=True)
 
+        # control whether to function as a pipeline register or not
+        self._fifo_en = self.input("fifo_en", 1)
+
         if self.parallel:
             self._parallel_load = self.input("parallel_load", 1)
             self._parallel_read = self.input("parallel_read", 1)
@@ -73,6 +76,13 @@ class RegFIFO(Generator):
 
         self._push = self.input("push", 1)
         self._pop = self.input("pop", 1)
+
+        # based on enable semantics. if fifo mode is disabled, we always enable push
+        # and pop to match with pipeline register behavior
+        self._push_en = self.var("push_en", 1)
+        self._pop_en = self.var("pop_en", 1)
+        self.wire(self._push_en, kratos.ternary(self._fifo_en, self._push, const(1, 1)))
+        self.wire(self._pop_en, kratos.ternary(self._fifo_en, self._pop, const(1, 1)))
 
         self._valid = self.output("valid", 1)
 
@@ -106,11 +116,10 @@ class RegFIFO(Generator):
         # self.wire(self._empty, self._wr_ptr == self._rd_ptr)
         self.wire(self._empty, self._num_items == 0)
 
-        self.wire(self._read, self._pop & ~self._passthru & ~self._empty)
+        self.wire(self._read, self._pop_en & ~self._passthru & ~self._empty)
 
         # Disallow passthru for now to prevent combinational loops
         self.wire(self._passthru, const(0, 1))
-        # self.wire(self._passthru, self._pop & self._push & self._empty)
 
         # Should only write
 
@@ -122,12 +131,11 @@ class RegFIFO(Generator):
             self.add_code(self.rd_ptr_ff_parallel)
             self.wire(self._parallel_out, self._reg_array)
             self.wire(self._write,
-                      self._push & ~self._passthru & (
+                      self._push_en & ~self._passthru & (
                               ~self._full | (self._parallel_read)))
         else:
-            # self.wire(self._write, self._push & ~self._passthru & (~self._full | self._pop))
             # Don't want to write when full at all for decoupling
-            self.wire(self._write, self._push & ~self._passthru & (~self._full))
+            self.wire(self._write, self._push_en & ~self._passthru & (~self._full))
             self.add_code(self.set_num_items)
             self.add_code(self.reg_array_ff)
             self.add_code(self.wr_ptr_ff)
@@ -208,7 +216,6 @@ class RegFIFO(Generator):
     @always_comb
     def valid_comb(self):
         self._valid = ((~self._empty) | self._passthru)
-        # self._valid = self._pop & ((~self._empty) | self._passthru)
 
     @always_ff((posedge, "clk"), (negedge, "rst_n"))
     def set_num_items(self):
@@ -269,13 +276,15 @@ class FifoRegWrapper(GemstoneGenerator):
             valid_in=magma.In(magma.Bit),
             valid_out=magma.Out(magma.Bit),
             ready_in=magma.In(magma.Bit),
-            ready_out=magma.Out(magma.Bit)
+            ready_out=magma.Out(magma.Bit),
+            fifo_en=magma.In(magma.Bit)
         )
 
         self.wire(self.ports.I, self.__circuit.ports.data_in)
         self.wire(self.ports.O, self.__circuit.ports.data_out)
         self.wire(self.ports.clk, self.__circuit.ports.clk)
         self.wire(self.ports.CE, self.__circuit.ports.clk_en[0])
+        self.wire(self.ports.fifo_en, self.__circuit.ports.fifo_en[0])
         # need an inverter for async reset
         async_inverter = FromMagma(mantle.Not)
         async_inverter.instance_name = "async_inverter"
