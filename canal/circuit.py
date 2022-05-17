@@ -11,6 +11,7 @@ from .cyclone import Node, PortNode, Tile, SwitchBoxNode, SwitchBoxIO, \
     SwitchBox, InterconnectCore, RegisterNode, RegisterMuxNode
 import mantle
 from gemstone.common.mux_wrapper import MuxWrapper
+from gemstone.common.mux_wrapper_aoi import AOIMuxWrapper, AOIMuxType
 from gemstone.generator.generator import Generator
 import magma
 from typing import Dict, Tuple, List, Union
@@ -67,7 +68,7 @@ def create_mux(node: Node):
             name = node_name
     else:
         name = f"WIRE_{node_name}"
-    mux = MuxWrapper(height, node.width, name=name)
+    mux = AOIMuxWrapper(height, node.width, AOIMuxType.Regular, name=name)
     return flatten_mux(mux)
 
 
