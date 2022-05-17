@@ -396,8 +396,8 @@ class Interconnect(generator.Generator):
             res.append((addr, data))
 
         if isinstance(configs[0], tuple):
-            add_config(configs[0])
-            add_config(configs[1])
+            for entry in configs:
+                add_config(entry)
         else:
             add_config(configs)
 

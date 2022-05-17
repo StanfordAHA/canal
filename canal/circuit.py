@@ -437,6 +437,12 @@ class SB(InterconnectConfigurable):
                 self.wire(reg.ports.ready_in, mux.ports.ready_out)
                 self.__handle_rmux_fanin(sb_node, n, node)
 
+                # set fifo enable mode
+                fifo_name = str(node) + "_fifo"
+                self.add_config(fifo_name, 1)
+                fifo_en = self.registers[fifo_name]
+                self.wire(fifo_en.ports.O[0], reg.ports.fifo_en)
+
     def __handle_rmux_fanin(self, sb: SwitchBoxNode, rmux: RegisterMuxNode,
                             reg: RegisterNode):
         # exclusive because the destination mux can only select one
@@ -1032,7 +1038,7 @@ class TileCircuit(GemstoneGenerator):
         return self.__features
 
     __CONFIG_TYPE = Tuple[int, int, int]
-    __BITSTREAM_TYPE = Union[__CONFIG_TYPE, Tuple[__CONFIG_TYPE, __CONFIG_TYPE]]
+    __BITSTREAM_TYPE = Union[__CONFIG_TYPE, List[__CONFIG_TYPE]]
 
     def get_route_bitstream_config(self, src_node: Node, dst_node: Node) -> __BITSTREAM_TYPE:
         assert src_node.width == dst_node.width
@@ -1067,7 +1073,7 @@ class TileCircuit(GemstoneGenerator):
                 reg_idx, config_data = circuit.get_config_data(str(dst_node) + "_enable", 1)
                 feature_addr = self.features().index(circuit)
                 additional_config = reg_idx, feature_addr, config_data
-                return base_config, additional_config
+                return [base_config, additional_config]
         return base_config
 
     def __lift_ports(self):

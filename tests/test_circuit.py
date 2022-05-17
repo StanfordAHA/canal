@@ -285,7 +285,9 @@ def test_sb_ready_valid():
                    sb_circuit.get_config_data(get_mux_sel_name(node6),
                                               node6.get_conn_in().index(node3)),
                    sb_circuit.get_config_data(str(node2) + "_enable", 1),
-                   sb_circuit.get_config_data(str(node3) + "_enable", 1)]
+                   sb_circuit.get_config_data(str(node3) + "_enable", 1),
+                   # enable fifo mode
+                   sb_circuit.get_config_data(str(node4) + "_fifo", 1)]
     # also enable the mux that gets connected to
     config_data = compress_config_data(config_data)
 
