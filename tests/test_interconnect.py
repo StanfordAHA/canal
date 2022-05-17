@@ -11,6 +11,7 @@ from canal.util import create_uniform_interconnect, SwitchBoxType, IOSide
 from canal.global_signal import apply_global_fanout_wiring, \
     apply_global_meso_wiring, apply_global_parallel_meso_wiring, \
     GlobalSignalWiring
+from util import copy_sv_files
 import pytest
 import filecmp
 import magma
@@ -221,6 +222,7 @@ def test_interconnect(num_tracks: int, chip_size: int,
         tester.expect(output_port, value)
 
     with tempfile.TemporaryDirectory() as tempdir:
+        copy_sv_files(tempdir)
         tester.compile_and_run(target="verilator",
                                magma_output="coreir-verilog",
                                directory=tempdir,
