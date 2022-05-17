@@ -383,19 +383,19 @@ class Interconnect(generator.Generator):
         for _, tile in self.tile_circuits.items():
             tile.finalize()
 
-    def get_node_bitstream_config(self, src_node: Node, dst_node: Node):
+    def get_node_bitstream_config(self, src_node: Node, dst_node: Node, ready_valid: bool = False):
         # this is the complete one which includes the tile_id
         x, y = dst_node.x, dst_node.y
         tile = self.tile_circuits[(x, y)]
         res = []
-        configs = tile.get_route_bitstream_config(src_node, dst_node)
+        configs = tile.get_route_bitstream_config(src_node, dst_node, ready_valid=ready_valid)
 
         def add_config(entry):
             reg_addr, feat_addr, data = entry
             addr = self.get_config_addr(reg_addr, feat_addr, x, y)
             res.append((addr, data))
 
-        if isinstance(configs[0], tuple):
+        if isinstance(configs, list):
             for entry in configs:
                 add_config(entry)
         else:
@@ -403,7 +403,7 @@ class Interconnect(generator.Generator):
 
         return res
 
-    def get_route_bitstream(self, routes: Dict[str, List[List[Node]]]):
+    def get_route_bitstream(self, routes: Dict[str, List[List[Node]]], ready_valid: bool = False):
         result = []
         for _, route in routes.items():
             for segment in route:
@@ -421,7 +421,8 @@ class Interconnect(generator.Generator):
                         # no mux created. skip
                         continue
                     configs = self.get_node_bitstream_config(pre_node,
-                                                             next_node)
+                                                             next_node,
+                                                             ready_valid=ready_valid)
                     for addr, data in configs:
                         result.append((addr, data))
         return result

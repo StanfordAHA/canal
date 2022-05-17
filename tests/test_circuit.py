@@ -891,9 +891,9 @@ def test_tile_ready_valid():
             reg, feat, d = value
             a = reg << 24 | (feat << 16)
             config_data.append((a, d))
-        if isinstance(entry[0], tuple):
-            add_config(entry[0])
-            add_config(entry[1])
+        if isinstance(entry, list):
+            for config in entry:
+                add_config(config)
         else:
             add_config(entry)
 
@@ -920,4 +920,4 @@ def test_tile_ready_valid():
 
 
 if __name__ == "__main__":
-    test_sb_ready_valid()
+    test_tile_ready_valid()
