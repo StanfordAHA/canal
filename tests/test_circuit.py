@@ -10,13 +10,6 @@ import tempfile
 import fault
 import fault.random
 import pytest
-import shutil
-
-
-def copy_sv_files(tempdir):
-    sv_files = AOIMuxWrapper.get_sv_files()
-    for f in sv_files:
-        shutil.copy(f, tempdir)
 
 
 @pytest.mark.parametrize('num_tracks', [2, 5])
