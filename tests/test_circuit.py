@@ -5,6 +5,7 @@ from gemstone.common.testers import BasicTester
 from gemstone.common.util import compress_config_data
 from canal.cyclone import *
 from canal.circuit import *
+from util import copy_sv_files
 import tempfile
 import fault
 import fault.random
@@ -50,6 +51,7 @@ def test_cb(num_tracks: int, bit_width: int):
         tester.expect(circuit.O, inputs[config_data.as_uint()])
 
     with tempfile.TemporaryDirectory() as tempdir:
+        copy_sv_files(tempdir)
         tester.compile_and_run(target="verilator",
                                magma_output="coreir-verilog",
                                directory=tempdir,
@@ -183,6 +185,7 @@ def test_sb(num_tracks: int, bit_width: int, sb_ctor,
                 tester.step(2)
 
     with tempfile.TemporaryDirectory() as tempdir:
+        copy_sv_files(tempdir)
         tester.compile_and_run(target="verilator",
                                magma_output="coreir-verilog",
                                directory=tempdir,
@@ -297,6 +300,7 @@ def test_stall(sb_ctor):
             tester.step(2)
 
     with tempfile.TemporaryDirectory() as tempdir:
+        copy_sv_files(tempdir)
         tester.compile_and_run(target="verilator",
                                magma_output="coreir-verilog",
                                directory=tempdir,
@@ -537,6 +541,7 @@ def test_tile(num_tracks: int, add_additional_core: bool):
         tester.expect(output_port, value)
 
     with tempfile.TemporaryDirectory() as tempdir:
+        copy_sv_files(tempdir)
         tester.compile_and_run(target="verilator",
                                magma_output="coreir-verilog",
                                directory=tempdir,
@@ -675,6 +680,7 @@ def test_double_buffer():
     tester.expect(circuit.interface.ports[output_name], 43)
 
     with tempfile.TemporaryDirectory() as tempdir:
+        copy_sv_files(tempdir)
         tester.compile_and_run(target="verilator",
                                magma_output="coreir-verilog",
                                directory=tempdir,
