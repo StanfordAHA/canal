@@ -51,7 +51,7 @@ class _PassThroughFromMux(GemstoneGenerator):
         return self._name
 
 
-def flatten_mux(mux, ready_valid):
+def flatten_mux(mux, ready_valid: bool = False):
     if mux.height > 1:
         return mux
     return _PassThroughFromMux(mux, ready_valid)
