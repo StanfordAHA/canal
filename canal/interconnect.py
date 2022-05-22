@@ -542,11 +542,12 @@ class Interconnect(generator.Generator):
                     break
         return result
 
-    def dump_pnr(self, dir_name, design_name, max_num_col=None):
+    def dump_pnr(self, dir_name, design_name, region=None):
         if not os.path.isdir(dir_name):
             os.mkdir(dir_name)
         dir_name = os.path.abspath(dir_name)
-        if max_num_col is None:
+        if region is None:
+            region = ((self.x_min, ))
             max_num_col = self.x_max + 1
 
         graph_path_dict = {}
