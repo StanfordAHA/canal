@@ -1090,9 +1090,9 @@ class SwitchBoxHelper:
 
     @staticmethod
     def get_imran_even_sb_wires(num_tracks: int) -> List[Tuple[int,
-                                                          SwitchBoxSide,
-                                                          int,
-                                                          SwitchBoxSide]]:
+                                                               SwitchBoxSide,
+                                                               int,
+                                                               SwitchBoxSide]]:
         w = num_tracks
         result = []
         # This method is used when the total number of tracks is even
@@ -1102,15 +1102,15 @@ class SwitchBoxHelper:
             # f_e1
             if track == 0:
                 result.append((track, SwitchBoxSide.WEST,
-                            1, SwitchBoxSide.NORTH))
+                               1, SwitchBoxSide.NORTH))
             elif track == (w - 1):
                 result.append((track, SwitchBoxSide.WEST,
-                            0, SwitchBoxSide.NORTH))
+                               0, SwitchBoxSide.NORTH))
             else:
                 result.append((track, SwitchBoxSide.WEST,
-                            mod(w - track, w), SwitchBoxSide.NORTH))
+                               mod(w - track, w), SwitchBoxSide.NORTH))
                 result.append((mod(w - track, w), SwitchBoxSide.NORTH,
-                            track, SwitchBoxSide.WEST))
+                               track, SwitchBoxSide.WEST))
             # f_e2
             result.append((track, SwitchBoxSide.NORTH,
                            mod(track + 1, w), SwitchBoxSide.EAST))
