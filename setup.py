@@ -10,6 +10,7 @@ setup(
         "magma-lang",
         "mantle",
         "hwtypes",
+        "kratos",
         "ordered_set",
         "pyverilog"
     ],

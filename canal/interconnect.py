@@ -24,7 +24,8 @@ class Interconnect(generator.Generator):
                  tile_id_width: int,
                  stall_signal_width: int = 4,
                  lift_ports=False,
-                 double_buffer: bool = False):
+                 double_buffer: bool = False,
+                 ready_valid: bool = False):
         super().__init__()
 
         self.__interface = {}
@@ -40,6 +41,7 @@ class Interconnect(generator.Generator):
         self.tile_circuits: Dict[Tuple[int, int], TileCircuit] = {}
 
         self.double_buffer = double_buffer
+        self.ready_valid = ready_valid
 
         # loop through the grid and create tile circuits
         # first find all the coordinates
@@ -81,7 +83,8 @@ class Interconnect(generator.Generator):
             self.tile_circuits[coord] = \
                 TileCircuit(tiles, config_addr_width, config_data_width,
                             stall_signal_width=stall_signal_width,
-                            double_buffer=self.double_buffer)
+                            double_buffer=self.double_buffer,
+                            ready_valid=self.ready_valid)
 
         # we need to deal with inter-tile connections now
         # we only limit mesh
@@ -131,10 +134,20 @@ class Interconnect(generator.Generator):
                             # no array
                             self.wire(tile.ports[src_sb_name],
                                       dst_tile.ports[dst_sb_name])
+                            if self.ready_valid:
+                                self.wire(tile.ports[src_sb_name + "_ready"],
+                                          dst_tile.ports[dst_sb_name + "_ready"])
+                                self.wire(tile.ports[src_sb_name + "_valid"],
+                                          dst_tile.ports[dst_sb_name + "_valid"])
                         else:
                             idx = sb_node.get_conn_in().index(src_node)
                             self.wire(tile.ports[src_sb_name][idx],
                                       dst_tile.ports[dst_sb_name])
+                            if self.ready_valid:
+                                self.wire(tile.ports[src_sb_name + "_ready"],
+                                          dst_tile.ports[dst_sb_name + "_ready"])
+                                self.wire(tile.ports[src_sb_name + "_valid"],
+                                          dst_tile.ports[dst_sb_name + "_valid"][idx])
 
         # connect these margin tiles, if needed
         self.__connect_margin_tiles()
@@ -229,6 +242,13 @@ class Interconnect(generator.Generator):
                     self.add_port(new_sb_name, sb_port.base_type())
                     self.__interface[new_sb_name] = sb_node
                     self.wire(self.ports[new_sb_name], sb_port)
+                    if self.ready_valid:
+                        if sb_node.io == SwitchBoxIO.SB_OUT:
+                            p = self.add_port(new_sb_name + "_ready", magma.In(magma.Bit))
+                            self.wire(p, tile.ports[sb_name + "_ready"])
+                        else:
+                            p = self.add_port(new_sb_name + "_valid", magma.BitIn)
+                            self.wire(p, tile.ports[sb_name + "_valid"])
 
     def __connect_margin_tiles(self):
         # connect these margin tiles
@@ -292,6 +312,8 @@ class Interconnect(generator.Generator):
                     sb_name = create_name(str(sb))
                     sb_port = self.tile_circuits[coord].ports[sb_name]
                     self.wire(ground, sb_port)
+                    if self.ready_valid:
+                        self.wire(ground, self.tile_circuits[coord].ports[sb_name + "_ready"])
 
     def __cleanup_tiles(self):
         tiles_to_remove = set()
@@ -361,16 +383,27 @@ class Interconnect(generator.Generator):
         for _, tile in self.tile_circuits.items():
             tile.finalize()
 
-    def get_node_bitstream_config(self, src_node: Node, dst_node: Node):
+    def get_node_bitstream_config(self, src_node: Node, dst_node: Node, ready_valid: bool = False):
         # this is the complete one which includes the tile_id
         x, y = dst_node.x, dst_node.y
         tile = self.tile_circuits[(x, y)]
-        reg_addr, feat_addr, data = tile.get_route_bitstream_config(src_node,
-                                                                    dst_node)
-        addr = self.get_config_addr(reg_addr, feat_addr, x, y)
-        return addr, data
+        res = []
+        configs = tile.get_route_bitstream_config(src_node, dst_node, ready_valid=ready_valid)
 
-    def get_route_bitstream(self, routes: Dict[str, List[List[Node]]]):
+        def add_config(entry):
+            reg_addr, feat_addr, data = entry
+            addr = self.get_config_addr(reg_addr, feat_addr, x, y)
+            res.append((addr, data))
+
+        if isinstance(configs, list):
+            for entry in configs:
+                add_config(entry)
+        else:
+            add_config(configs)
+
+        return res
+
+    def get_route_bitstream(self, routes: Dict[str, List[List[Node]]], ready_valid: bool = False):
         result = []
         for _, route in routes.items():
             for segment in route:
@@ -387,9 +420,11 @@ class Interconnect(generator.Generator):
                     if len(next_node.get_conn_in()) == 1:
                         # no mux created. skip
                         continue
-                    addr, data = self.get_node_bitstream_config(pre_node,
-                                                                next_node)
-                    result.append((addr, data))
+                    configs = self.get_node_bitstream_config(pre_node,
+                                                             next_node,
+                                                             ready_valid=ready_valid)
+                    for addr, data in configs:
+                        result.append((addr, data))
         return result
 
     def configure_placement(self, x: int, y: int, instr, pnr_tag=None):

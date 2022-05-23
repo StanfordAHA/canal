@@ -1,6 +1,6 @@
 from gemstone.common.core import ConfigurableCore
 from hwtypes import BitVector
-from gemstone.common.dummy_core_magma import DummyCore
+from gemstone.common.dummy_core_magma import DummyCore, ReadyValidCore
 from gemstone.common.testers import BasicTester
 from gemstone.common.util import compress_config_data
 from canal.cyclone import *
@@ -58,6 +58,49 @@ def test_cb(num_tracks: int, bit_width: int):
                                flags=["-Wno-fatal"])
 
 
+def test_cb_ready_valid():
+    addr_width = 8
+    data_width = 32
+    bit_width = 16
+    num_tracks = 5
+
+    port_node = PortNode("data_in", 0, 0, bit_width)
+
+    for i in range(num_tracks):
+        sb = SwitchBoxNode(0, 0, i, bit_width, SwitchBoxSide.NORTH,
+                           SwitchBoxIO.SB_IN)
+        sb.add_edge(port_node)
+
+    cb = CB(port_node, addr_width, data_width, ready_valid=True)
+    cb.finalize()
+
+    circuit = cb.circuit()
+    tester = BasicTester(circuit,
+                         circuit.clk,
+                         circuit.reset)
+
+    for config_data in [BitVector[data_width](x) for x in range(num_tracks)]:
+        tester.reset()
+        tester.configure(*cb.get_config_data("CB_data_in_sel",
+                                             config_data))
+        inputs = [fault.random.random_bv(1) for _ in range(num_tracks)]
+        for i, input_ in enumerate(inputs):
+            tester.poke(circuit.valid_in[i], BitVector[1](input_))
+        tester.eval()
+        tester.expect(circuit.valid_out, inputs[config_data.as_uint()])
+        ready = fault.random_bv(1)
+        tester.poke(circuit.ready_in, ready)
+        tester.eval()
+        tester.expect(circuit.ready_out, ready)
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        copy_sv_files(tempdir)
+        tester.compile_and_run(target="verilator",
+                               magma_output="coreir-verilog",
+                               directory=tempdir,
+                               flags=["-Wno-fatal"])
+
+
 # helper function to find reg node connect to a sb_node, if any
 def find_reg_mux_node(node: Node) -> Union[Tuple[None, None],
                                            Tuple[RegisterNode,
@@ -68,6 +111,12 @@ def find_reg_mux_node(node: Node) -> Union[Tuple[None, None],
             reg_mux = list(n)[0]
             return n, reg_mux
     return None, None
+
+
+def insert_pipeline_registers(sb: SwitchBox):
+    for side in SwitchBoxSide:
+        for track in range(sb.num_track):
+            sb.add_pipeline_register(side, track)
 
 
 @pytest.mark.parametrize('num_tracks', [2, 5])
@@ -88,9 +137,7 @@ def test_sb(num_tracks: int, bit_width: int, sb_ctor,
     reg_mode, batch_size = reg
     # insert registers to every sides and tracks
     if reg_mode:
-        for side in SwitchBoxSide:
-            for track in range(num_tracks):
-                switchbox.add_pipeline_register(side, track)
+        insert_pipeline_registers(switchbox)
 
     sb_circuit = SB(switchbox, addr_width, data_width)
     sb_circuit.finalize()
@@ -192,6 +239,103 @@ def test_sb(num_tracks: int, bit_width: int, sb_ctor,
                                flags=["-Wno-fatal"])
 
 
+def test_sb_ready_valid():
+    addr_width = 8
+    data_width = 32
+    num_tracks = 5
+
+    switchbox = DisjointSwitchBox(0, 0, 5, 16)
+    # insert registers to every side and tracks
+    insert_pipeline_registers(switchbox)
+
+    sb_circuit = SB(switchbox, addr_width, data_width, ready_valid=True)
+    sb_circuit.finalize()
+    circuit = sb_circuit.circuit()
+
+    tester = BasicTester(circuit,
+                         circuit.clk,
+                         circuit.reset)
+
+    # notice that we choose to use disjoint to make test easier to write
+    # we describe a complex path
+    # in -> out1 -> reg -> rmux
+    #  |     2       4      5
+    #  - -> out2 -> rmux
+    #        3       6
+    node1 = switchbox.get_sb(SwitchBoxSide.WEST, 0, SwitchBoxIO.SB_IN)
+    node2 = switchbox.get_sb(SwitchBoxSide.EAST, 0, SwitchBoxIO.SB_OUT)
+    node3 = switchbox.get_sb(SwitchBoxSide.SOUTH, 0, SwitchBoxIO.SB_OUT)
+    node4 = switchbox.get_register(SwitchBoxSide.EAST, 0)
+    node5 = switchbox.get_reg_mux(SwitchBoxSide.EAST, 0)
+    node6 = switchbox.get_reg_mux(SwitchBoxSide.SOUTH, 0)
+
+    config_data = [sb_circuit.get_config_data(get_mux_sel_name(node2),
+                                              node2.get_conn_in().index(node1)),
+                   sb_circuit.get_config_data(get_mux_sel_name(node3),
+                                              node3.get_conn_in().index(node1)),
+                   sb_circuit.get_config_data(get_mux_sel_name(node5),
+                                              node5.get_conn_in().index(node4)),
+                   sb_circuit.get_config_data(get_mux_sel_name(node6),
+                                              node6.get_conn_in().index(node3)),
+                   sb_circuit.get_config_data(str(node2) + "_enable", 1),
+                   sb_circuit.get_config_data(str(node3) + "_enable", 1),
+                   # enable fifo mode
+                   sb_circuit.get_config_data(str(node4) + "_fifo", 1)]
+    # also enable the mux that gets connected to
+    config_data = compress_config_data(config_data)
+
+    tester.zero_inputs()
+    tester.reset()
+
+    for addr, data in config_data:
+        tester.configure(addr, data)
+
+    input_port_name = create_name(str(node1))
+    output_node3 = create_name(str(node3))
+    output_node5 = create_name(str(node2))
+    tester.poke(circuit.interface.ports[input_port_name], 42)
+    tester.poke(circuit.interface.ports[input_port_name + "_valid_in"], 1)
+    tester.poke(circuit.interface.ports[output_node3 + "_ready_in"], 1)
+    tester.poke(circuit.interface.ports[output_node5 + "_ready_in"], 1)
+    tester.eval()
+    tester.expect(circuit.interface.ports[output_node3], 42)
+    tester.expect(circuit.interface.ports[input_port_name + "_ready_out"], 1)
+    # turn off node 3 ready
+    tester.poke(circuit.interface.ports[output_node3 + "_ready_in"], 0)
+    tester.eval()
+    tester.expect(circuit.interface.ports[input_port_name + "_ready_out"], 0)
+    # turn back on
+    tester.poke(circuit.interface.ports[output_node3 + "_ready_in"], 1)
+    # buffer out the FIFO
+    tester.poke(circuit.interface.ports[output_node5 + "_ready_in"], 0)
+    tester.eval()
+    # next cycle
+    tester.step(2)
+    # next output
+    tester.poke(circuit.interface.ports[input_port_name], 43)
+    tester.eval()
+    tester.expect(circuit.interface.ports[output_node5], 42)
+    tester.expect(circuit.interface.ports[output_node3], 43)
+    # should be ready
+    tester.expect(circuit.interface.ports[input_port_name + "_ready_out"], 1)
+    # next cycle
+    tester.step(2)
+    # next output
+    tester.poke(circuit.interface.ports[input_port_name], 44)
+    tester.eval()
+    tester.expect(circuit.interface.ports[output_node5], 42)
+    tester.expect(circuit.interface.ports[output_node3], 44)
+    # should be not ready
+    tester.expect(circuit.interface.ports[input_port_name + "_ready_out"], 0)
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        copy_sv_files(tempdir)
+        tester.compile_and_run(target="verilator",
+                               magma_output="coreir-verilog",
+                               directory=tempdir,
+                               flags=["-Wno-fatal"])
+
+
 @pytest.mark.parametrize("sb_ctor", [DisjointSwitchBox,
                                      WiltonSwitchBox,
                                      ImranSwitchBox])
@@ -207,9 +351,7 @@ def test_stall(sb_ctor):
     switchbox = sb_ctor(0, 0, num_tracks, bit_width)
     # insert registers to every sides and tracks
 
-    for side in SwitchBoxSide:
-        for track in range(num_tracks):
-            switchbox.add_pipeline_register(side, track)
+    insert_pipeline_registers(switchbox)
 
     sb_circuit = SB(switchbox, addr_width, data_width, stall_signal_width=1)
     sb_circuit.finalize()
@@ -343,6 +485,20 @@ class AdditionalDummyCore(ConfigurableCore):
         return "DummyCore2"
 
 
+def get_in_out_connections(num_tracks):
+    input_connections = []
+    for track in range(num_tracks):
+        for side in SwitchBoxSide:
+            input_connections.append(SBConnectionType(side, track,
+                                                      SwitchBoxIO.SB_IN))
+    output_connections = []
+    for track in range(num_tracks):
+        for side in SwitchBoxSide:
+            output_connections.append(SBConnectionType(side, track,
+                                                       SwitchBoxIO.SB_OUT))
+    return input_connections, output_connections
+
+
 # 5 is too slow
 @pytest.mark.parametrize('num_tracks', [2, 4])
 @pytest.mark.parametrize("add_additional_core", [True, False])
@@ -375,18 +531,9 @@ def test_tile(num_tracks: int, add_additional_core: bool):
         tiles[bit_width] = tile
 
     # set the core and core connection
-    # here all the input ports are connect to SB_IN and all output ports are
+    # here all the input ports are connected to SB_IN and all output ports are
     # connected to SB_OUT
-    input_connections = []
-    for track in range(num_tracks):
-        for side in SwitchBoxSide:
-            input_connections.append(SBConnectionType(side, track,
-                                                      SwitchBoxIO.SB_IN))
-    output_connections = []
-    for track in range(num_tracks):
-        for side in SwitchBoxSide:
-            output_connections.append(SBConnectionType(side, track,
-                                                       SwitchBoxIO.SB_OUT))
+    input_connections, output_connections = get_in_out_connections(num_tracks)
 
     for bit_width, tile in tiles.items():
         tile.set_core(core)
@@ -569,18 +716,9 @@ def test_double_buffer():
         tiles[bit_width] = tile
 
     # set the core and core connection
-    # here all the input ports are connect to SB_IN and all output ports are
+    # here all the input ports are connected to SB_IN and all output ports are
     # connected to SB_OUT
-    input_connections = []
-    for track in range(num_tracks):
-        for side in SwitchBoxSide:
-            input_connections.append(SBConnectionType(side, track,
-                                                      SwitchBoxIO.SB_IN))
-    output_connections = []
-    for track in range(num_tracks):
-        for side in SwitchBoxSide:
-            output_connections.append(SBConnectionType(side, track,
-                                                       SwitchBoxIO.SB_OUT))
+    input_connections, output_connections = get_in_out_connections(num_tracks)
 
     for bit_width, tile in tiles.items():
         tile.set_core(core)
@@ -633,6 +771,7 @@ def test_double_buffer():
                                                                 in_port_node)
     output_bitstream = tile_circuit.get_route_bitstream_config(out_port_node,
                                                                output_sb)
+
     # notice that both of them will be configured using the double buffer scheme
 
     def get_config_data(config_data, reg_data):
@@ -685,3 +824,93 @@ def test_double_buffer():
                                magma_output="coreir-verilog",
                                directory=tempdir,
                                flags=["-Wno-fatal"])
+
+
+def test_tile_ready_valid():
+    tile_id_width = 16
+    x = 0
+    y = 0
+    num_tracks = 2
+    addr_width = 8
+    data_width = 32
+
+    dummy_core = ReadyValidCore()
+    core = CoreInterface(dummy_core)
+
+    # we use disjoint switch here
+    bit_width = 16
+    switchbox = DisjointSwitchBox(x, y, num_tracks, bit_width)
+    tile = Tile(x, y, bit_width, switchbox)
+    insert_pipeline_registers(tile.switchbox)
+    switchbox = tile.switchbox
+
+    input_connections, output_connections = get_in_out_connections(num_tracks)
+
+    tile.set_core(core)
+
+    input_port_name = f"data_in_{bit_width}b"
+    output_port_name = f"data_out_{bit_width}b"
+
+    tile.set_core_connection(input_port_name, input_connections)
+    tile.set_core_connection(output_port_name, output_connections)
+
+    tile_circuit = TileCircuit({16: tile}, addr_width, data_width,
+                               tile_id_width=tile_id_width,
+                               ready_valid=True)
+
+    # finalize it
+    tile_circuit.finalize()
+
+    circuit = tile_circuit.circuit()
+
+    tester = BasicTester(circuit, circuit.clk, circuit.reset)
+
+    tester.zero_inputs()
+    tester.reset()
+
+    # we describe a route
+    node1 = switchbox.get_sb(SwitchBoxSide.WEST, 0, SwitchBoxIO.SB_IN)
+    node2 = tile.get_port("data_in_16b")
+    node3 = tile.get_port("data_out_16b")
+    node4 = switchbox.get_sb(SwitchBoxSide.EAST, 0, SwitchBoxIO.SB_OUT)
+    node5 = switchbox.get_reg_mux(SwitchBoxSide.EAST, 0)
+
+    raw_config_data = [tile_circuit.get_route_bitstream_config(node1, node2),
+                       tile_circuit.get_route_bitstream_config(node3, node4),
+                       tile_circuit.get_route_bitstream_config(node4, node5)]
+    config_data = []
+    for entry in raw_config_data:
+        def add_config(value):
+            reg, feat, d = value
+            a = reg << 24 | (feat << 16)
+            config_data.append((a, d))
+        if isinstance(entry, list):
+            for config in entry:
+                add_config(config)
+        else:
+            add_config(entry)
+
+    config_data = compress_config_data(config_data)
+
+    for addr, data in config_data:
+        tester.configure(addr, data)
+
+    input_port_name = create_name(str(node1))
+    output_port_name = create_name(str(node4))
+
+    tester.poke(circuit.interface.ports[input_port_name + "_valid"], 1)
+    tester.poke(circuit.interface.ports[output_port_name + "_ready"], 1)
+    tester.eval()
+    # the upstream ready should be high
+    tester.expect(circuit.interface.ports[input_port_name + "_ready"], 1)
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        copy_sv_files(tempdir)
+        tester.compile_and_run(target="verilator",
+                               magma_output="coreir-verilog",
+                               directory=tempdir,
+                               flags=["-Wno-fatal"])
+
+
+if __name__ == "__main__":
+    test_tile_ready_valid()

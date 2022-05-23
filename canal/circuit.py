@@ -3,41 +3,32 @@ This is a layer build on top of Cyclone
 """
 from collections import OrderedDict
 
+import kratos.util
 from gemstone.common.core import Core
 from gemstone.common.mux_with_default import MuxWithDefaultWrapper
-from gemstone.common.zext_wrapper import ZextWrapper
 from gemstone.common.configurable import Configurable, ConfigurationType
 from .cyclone import Node, PortNode, Tile, SwitchBoxNode, SwitchBoxIO, \
-    SwitchBox, InterconnectCore, RegisterNode, RegisterMuxNode
+    SwitchBox, InterconnectCore, RegisterNode, RegisterMuxNode, create_name
 import mantle
+import math
 from gemstone.common.mux_wrapper import MuxWrapper
 from gemstone.common.mux_wrapper_aoi import AOIMuxWrapper, AOIMuxType
-from gemstone.generator.generator import Generator
 import magma
 from typing import Dict, Tuple, List, Union
-import gemstone
-import gemstone.generator.generator as generator
+from gemstone.generator.generator import Generator as GemstoneGenerator
 from gemstone.generator.from_magma import FromMagma
 from mantle import DefineRegister
 from gemstone.generator.const import Const
-
-
-def create_name(name: str):
-    tokens = " (),"
-    for t in tokens:
-        name = name.replace(t, "_")
-    name = name.replace("__", "_")
-    if name[-1] == "_":
-        name = name[:-1]
-    return name
+from .logic import ExclusiveNodeFanout, InclusiveNodeFanout, ReadyValidLoopBack, \
+    FifoRegWrapper
 
 
 def get_mux_sel_name(node: Node):
     return f"{create_name(str(node))}_sel"
 
 
-class _PassThroughFromMux(Generator):
-    def __init__(self, mux):
+class _PassThroughFromMux(GemstoneGenerator):
+    def __init__(self, mux, ready_valid: bool = False):
         super().__init__()
         self.width = mux.width
         self.height = mux.height
@@ -47,20 +38,29 @@ class _PassThroughFromMux(Generator):
                        O=magma.Out(magma.Bits[mux.width]))
         self.wire(self.ports.I, self.ports.O)
 
+        if ready_valid:
+            bit = magma.Bit
+            self.add_ports(ready_in=magma.In(bit),
+                           ready_out=magma.Out(bit),
+                           valid_in=magma.In(bit),
+                           valid_out=magma.Out(bit))
+            self.wire(self.ports.ready_in, self.ports.ready_out)
+            self.wire(self.ports.valid_in, self.ports.valid_out)
+
     def name(self):
         return self._name
 
 
-def flatten_mux(mux):
+def flatten_mux(mux, ready_valid: bool = False):
     if mux.height > 1:
         return mux
-    return _PassThroughFromMux(mux)
+    return _PassThroughFromMux(mux, ready_valid)
 
 
-def create_mux(node: Node):
+def create_mux(node: Node, suffix: str = "", width: int = 0, ready_valid=False):
     conn_in = node.get_conn_in()
     height = len(conn_in)
-    node_name = create_name(str(node))
+    node_name = create_name(str(node)) + suffix
     if height > 1:
         if "MUX" not in node_name:
             name = f"MUX_{node_name}"
@@ -68,8 +68,14 @@ def create_mux(node: Node):
             name = node_name
     else:
         name = f"WIRE_{node_name}"
-    mux = AOIMuxWrapper(height, node.width, AOIMuxType.Regular, name=name)
-    return flatten_mux(mux)
+    if width == 0:
+        width = node.width
+    if ready_valid:
+        mux = AOIMuxWrapper(height, width,
+                            mux_type=AOIMuxType.RegularReadyValid, name=name)
+    else:
+        mux = MuxWrapper(height, width, name=name)
+    return flatten_mux(mux, ready_valid=ready_valid)
 
 
 class InterconnectConfigurable(Configurable):
@@ -79,7 +85,8 @@ class InterconnectConfigurable(Configurable):
 class CB(InterconnectConfigurable):
     def __init__(self, node: PortNode,
                  config_addr_width: int, config_data_width: int,
-                 double_buffer: bool = False):
+                 double_buffer: bool = False,
+                 ready_valid: bool = False):
         if not isinstance(node, PortNode):
             raise ValueError(node, PortNode.__name__)
         self.node: PortNode = node
@@ -87,15 +94,13 @@ class CB(InterconnectConfigurable):
         super().__init__(config_addr_width, config_data_width,
                          double_buffer=double_buffer)
 
-        self.mux = create_mux(self.node)
+        self.mux = create_mux(self.node, ready_valid=ready_valid)
 
         # lift the port to the top level
-        self.add_ports(
-            I=self.mux.ports.I.base_type(),
-            O=self.mux.ports.O.base_type())
-
-        self.wire(self.ports.I, self.mux.ports.I)
+        self.add_ports(O=self.mux.ports.O.base_type())
         self.wire(self.ports.O, self.mux.ports.O)
+        self.add_ports(I=self.mux.ports.I.base_type())
+        self.wire(self.ports.I, self.mux.ports.I)
 
         if self.mux.height > 1:
             self.add_ports(
@@ -106,6 +111,26 @@ class CB(InterconnectConfigurable):
             self.add_config(config_name, self.mux.sel_bits)
             self.wire(self.registers[config_name].ports.O,
                       self.mux.ports.S)
+
+            # ready valid has other stuff
+            if ready_valid:
+                self.add_ports(
+                    ready_in=magma.In(magma.Bit),
+                    ready_out=magma.Out(magma.Bit),
+                    valid_in=magma.In(magma.Bits[self.mux.height]),
+                    valid_out=magma.Out(magma.Bit),
+                    out_sel=self.mux.ports.out_sel.base_type()
+                )
+                for port_type in ["ready", "valid"]:
+                    for direction in ["in", "out"]:
+                        port_name = f"{port_type}_{direction}"
+                        self.wire(self.ports[port_name],
+                                  self.mux.ports[port_name])
+                self.wire(self.ports.out_sel, self.mux.ports.out_sel)
+                self.add_config(str(node) + "_enable", 1)
+                enable = self.add_port("enable", magma.BitOut)
+                self.wire(enable, self.registers[str(node) + "_enable"].ports.O[0])
+
         else:
             # remove clk and reset ports from the base class since it's going
             # to be a pass through wire anyway
@@ -126,13 +151,15 @@ class SB(InterconnectConfigurable):
     def __init__(self, switchbox: SwitchBox, config_addr_width: int,
                  config_data_width: int, core_name: str = "",
                  stall_signal_width: int = 4,
-                 double_buffer: bool = False):
+                 double_buffer: bool = False,
+                 ready_valid: bool = False):
         self.finalized = False
+        self.ready_valid = ready_valid
         self.switchbox = switchbox
         self.__core_name = core_name
         self.stall_signal_width = stall_signal_width
 
-        self.sb_muxs: Dict[str, Tuple[SwitchBoxNode, MuxWrapper]] = {}
+        self.sb_muxs: Dict[str, Tuple[SwitchBoxNode, AOIMuxWrapper]] = {}
         self.reg_muxs: Dict[str, Tuple[RegisterMuxNode, MuxWrapper]] = {}
         self.regs: Dict[str, Tuple[RegisterNode, FromMagma]] = {}
 
@@ -212,6 +239,11 @@ class SB(InterconnectConfigurable):
         # name
         self.instance_name = self.name()
 
+        # ready valid interface
+        self.__wire_reg_reset()
+        self.__connect_nodes_fanin()
+        self.__lift_ready_valid()
+
         # extra hashing because we don't represent it in the module name
         _hash = hash(self)
         # ordering doesn't mater here
@@ -241,7 +273,13 @@ class SB(InterconnectConfigurable):
         sbs = self.switchbox.get_all_sbs()
         for sb in sbs:
             sb_name = str(sb)
-            self.sb_muxs[sb_name] = (sb, create_mux(sb))
+            self.sb_muxs[sb_name] = (
+                sb, create_mux(sb, ready_valid=self.ready_valid))
+
+            # for ready valid, we need 1-bit config to know whether
+            # the mux is being used or not
+            if self.ready_valid and len(sb.get_conn_in()) > 0:
+                self.add_config(sb_name + "_enable", 1)
 
     def __create_reg_mux(self):
         for _, reg_mux in self.switchbox.reg_muxs.items():
@@ -264,12 +302,16 @@ class SB(InterconnectConfigurable):
             # we use the sb_name instead so that when we lift the port up,
             # we can use the mux output instead
             sb_name = str(sb_node)
-            self.reg_muxs[sb_name] = (reg_mux, create_mux(reg_mux))
+            self.reg_muxs[sb_name] = (
+                reg_mux, create_mux(reg_mux, ready_valid=self.ready_valid))
 
     def __create_reg(self):
         for reg_name, reg_node in self.switchbox.registers.items():
-            reg_cls = DefineRegister(reg_node.width, has_ce=True)
-            reg = FromMagma(reg_cls)
+            if self.ready_valid:
+                reg = FifoRegWrapper(reg_node.width)
+            else:
+                reg_cls = DefineRegister(reg_node.width, has_ce=True)
+                reg = FromMagma(reg_cls)
             reg.instance_name = create_name(str(reg_node))
             self.regs[reg_name] = reg_node, reg
         # add stall ports
@@ -299,6 +341,12 @@ class SB(InterconnectConfigurable):
             self.wire(and_gate.ports.I1, invert.ports.O)
             self.wire(reg.ports.CE, self.convert(and_gate.ports.O[0],
                                                  magma.enable))
+
+    def __wire_reg_reset(self):
+        # only for ready valid mode
+        if self.ready_valid:
+            for (_, reg) in self.regs.values():
+                self.wire(self.ports.reset, reg.ports.ASYNCRESET)
 
     def __get_connected_port_names(self) -> List[str]:
         # this is to uniquify the SB given different port connections
@@ -335,6 +383,9 @@ class SB(InterconnectConfigurable):
                         assert node_ == node
                         input_port = node_mux.ports.I[idx]
                         self.wire(input_port, output_port)
+                        if self.ready_valid:
+                            self.wire(node_mux.ports.valid_in[idx],
+                                      mux.ports.valid_out)
 
     def __connect_sb_out(self):
         for _, (sb, mux) in self.sb_muxs.items():
@@ -346,6 +397,8 @@ class SB(InterconnectConfigurable):
                         assert len(reg_node.get_conn_in()) == 1
                         # wire 1
                         self.wire(mux.ports.O, reg.ports.I)
+                        if self.ready_valid:
+                            self.wire(mux.ports.valid_out, reg.ports.valid_in)
                     elif isinstance(node, RegisterMuxNode):
                         assert len(node.get_conn_in()) == 2
                         idx = node.get_conn_in().index(sb)
@@ -354,6 +407,9 @@ class SB(InterconnectConfigurable):
                         assert n == node
                         # wire 2
                         self.wire(mux.ports.O, reg_mux.ports.I[idx])
+                        if self.ready_valid:
+                            self.wire(mux.ports.valid_out,
+                                      reg_mux.ports.valid_in[idx])
 
     def __connect_regs(self):
         for _, (node, reg) in self.regs.items():
@@ -375,8 +431,134 @@ class SB(InterconnectConfigurable):
             # wire 3
             self.wire(reg.ports.O, mux.ports.I[idx])
 
+            if self.ready_valid:
+                # need to connect valid signals
+                self.wire(reg.ports.valid_out, mux.ports.valid_in[idx])
+                self.wire(reg.ports.ready_in, mux.ports.ready_out)
+                self.__handle_rmux_fanin(sb_node, n, node)
 
-class TileCircuit(generator.Generator):
+                # set fifo enable mode
+                fifo_name = str(node) + "_fifo"
+                self.add_config(fifo_name, 1)
+                fifo_en = self.registers[fifo_name]
+                self.wire(fifo_en.ports.O[0], reg.ports.fifo_en)
+
+    def __handle_rmux_fanin(self, sb: SwitchBoxNode, rmux: RegisterMuxNode,
+                            reg: RegisterNode):
+        # exclusive because the destination mux can only select one
+        sb_fanout = ExclusiveNodeFanout.get(len(sb))
+        sb_fanout.instance_name = create_name(str(sb)) + "_FANOUT"
+        reg_circuit = self.regs[reg.name][1]
+        rmux_circuit = self.reg_muxs[str(sb)][1]
+        sb_circuit = self.sb_muxs[str(sb)][1]
+        reg_index = rmux.get_conn_in().index(reg)
+        sb_index = rmux.get_conn_in().index(sb)
+        self.wire(sb_fanout.ports.I[reg_index], reg_circuit.ports.ready_out)
+        self.wire(sb_fanout.ports.I[sb_index], rmux_circuit.ports.ready_out)
+        self.wire(sb_fanout.ports.O[0], sb_circuit.ports.ready_in)
+        # use rmux selection
+        self.wire(sb_fanout.ports.S, rmux_circuit.ports.out_sel)
+
+    def handle_node_fanin(self, node: Node):
+        fanout = InclusiveNodeFanout.get(node)
+        # fanout ports is I{i} S{i} E{i} and sel{i}
+        for idx, n in enumerate(list(node)):
+            # need to get the mux the node is connected to
+            if not isinstance(n, SwitchBoxNode):
+                assert isinstance(n, PortNode)
+                assert len(n) == 0
+                # this is a port input, i.e. CB
+                # we assume it's properly connected from outside
+                ready = n.name + "_ready"
+                sel = n.name + "_out_sel"
+                if ready not in self.ports:
+                    self.add_port(ready, magma.BitIn)
+                    num_in = int(
+                        math.pow(2, kratos.clog2(len(n.get_conn_in()))))
+                    self.add_port(sel, magma.In(magma.Bits[num_in]))
+                self.wire(fanout.ports[f"I{idx}"][0], self.ports[ready])
+                self.wire(fanout.ports[f"S{idx}"], self.ports[sel])
+                enable = n.name + "_enable"
+                if enable not in self.ports:
+                    self.add_port(enable, magma.In(magma.Bits[1]))
+                en = self.ports[enable]
+            else:
+                assert isinstance(n, SwitchBoxNode)
+                sb: SwitchBoxNode = n
+                assert sb.io == SwitchBoxIO.SB_OUT
+                sb_circuit = self.sb_muxs[str(sb)][1]
+                self.wire(fanout.ports[f"I{idx}"][0],
+                          sb_circuit.ports.ready_out)
+                self.wire(fanout.ports[f"S{idx}"], sb_circuit.ports.out_sel)
+                en = self.registers[str(n) + "_enable"].ports.O
+            self.wire(fanout.ports[f"E{idx}"], en)
+        # get the node circuit
+        if isinstance(node, SwitchBoxNode):
+            port = self.sb_muxs[str(node)][1].ports.ready_in
+        else:
+            # has to be a port
+            assert isinstance(node, PortNode)
+            port_name = f"{node.name}_ready_out"
+            if port_name not in self.ports:
+                self.add_port(port_name, magma.BitOut)
+            port = self.ports[port_name]
+
+        self.wire(fanout.ports.O[0], port)
+
+    def add_port_valid(self, node: PortNode):
+        valid_port = node.name + "_valid"
+        port = self.add_port(valid_port, magma.BitIn)
+        assert len(node.get_conn_in()) == 0
+        for n in node:
+            assert isinstance(n, SwitchBoxNode)
+            assert n.io == SwitchBoxIO.SB_OUT
+            idx = n.get_conn_in().index(node)
+            mux = self.sb_muxs[str(n)][1]
+            self.wire(mux.ports.valid_in[idx], port)
+
+        return port
+
+    def __connect_nodes_fanin(self):
+        if not self.ready_valid:
+            return
+        for sb, _ in self.sb_muxs.values():
+            if sb.io == SwitchBoxIO.SB_IN:
+                self.handle_node_fanin(sb)
+
+    def __lift_ready_valid(self):
+        # lift ready valid signals from the muxes to the top
+        # in this way we can connect them to each other in the
+        if not self.ready_valid:
+            return
+        for sb_name, (sb, mux) in self.sb_muxs.items():
+            port_name = create_name(sb_name)
+            in_bit = magma.In(magma.Bit)
+            out_bit = magma.Out(magma.Bit)
+            if sb.io == SwitchBoxIO.SB_IN:
+                self.add_port(port_name + "_ready_out", out_bit)
+                self.add_port(port_name + "_valid_in", in_bit)
+                self.wire(self.ports[port_name + "_ready_out"],
+                          mux.ports.ready_out)
+                self.wire(self.ports[port_name + "_valid_in"],
+                          mux.ports.valid_in)
+            else:
+                self.add_port(port_name + "_ready_in", in_bit)
+                self.add_port(port_name + "_valid_out", out_bit)
+
+                # to see if we have a register mux here
+                # if so , we need to lift the reg_mux output instead
+                if sb_name in self.reg_muxs:
+                    # override the mux value
+                    node, mux = self.reg_muxs[sb_name]
+                    assert isinstance(node, RegisterMuxNode)
+                    assert node in sb
+                self.wire(self.ports[port_name + "_ready_in"],
+                          mux.ports.ready_in)
+                self.wire(self.ports[port_name + "_valid_out"],
+                          mux.ports.valid_out)
+
+
+class TileCircuit(GemstoneGenerator):
     """We merge tiles at the same coordinates with different bit widths
     The only requirements is that the tiles have to be on the same
     coordinates. Their heights do not have to match.
@@ -390,7 +572,8 @@ class TileCircuit(generator.Generator):
                  tile_id_width: int = 16,
                  full_config_addr_width: int = 32,
                  stall_signal_width: int = 4,
-                 double_buffer: bool = False):
+                 double_buffer: bool = False,
+                 ready_valid: bool = False):
         super().__init__()
 
         # turn off hashing because we controls that hashing here
@@ -402,6 +585,7 @@ class TileCircuit(generator.Generator):
         self.tile_id_width = tile_id_width
 
         self.double_buffer = double_buffer
+        self.ready_valid = ready_valid
 
         # compute config addr sizes
         # (16, 24)
@@ -465,7 +649,8 @@ class TileCircuit(generator.Generator):
                     # create a CB
                     port_ref = tile.get_port_ref(port_node.name)
                     cb = CB(port_node, config_addr_width, config_data_width,
-                            double_buffer=self.double_buffer)
+                            double_buffer=self.double_buffer,
+                            ready_valid=self.ready_valid)
                     self.wire(cb.ports.O, port_ref)
                     self.cbs[port_name] = cb
                 else:
@@ -477,7 +662,8 @@ class TileCircuit(generator.Generator):
             core_name = self.core.name() if self.core is not None else ""
             sb = SB(tile.switchbox, config_addr_width, config_data_width,
                     core_name, stall_signal_width=stall_signal_width,
-                    double_buffer=self.double_buffer)
+                    double_buffer=self.double_buffer,
+                    ready_valid=self.ready_valid)
             self.sbs[sb.switchbox.width] = sb
 
         # lift all the sb ports up
@@ -485,6 +671,8 @@ class TileCircuit(generator.Generator):
             sbs = switchbox.switchbox.get_all_sbs()
             assert switchbox.switchbox.x == self.x
             assert switchbox.switchbox.y == self.y
+            bit_in = magma.In(magma.Bit)
+            bit_out = magma.Out(magma.Bit)
             for sb in sbs:
                 sb_name = create_name(str(sb))
                 node, mux = switchbox.sb_muxs[str(sb)]
@@ -494,12 +682,21 @@ class TileCircuit(generator.Generator):
                 port = switchbox.ports[sb_name]
                 if node.io == SwitchBoxIO.SB_IN:
                     self.add_port(sb_name, magma.In(port.base_type()))
-                    # FIXME:
-                    #   it seems like I need this hack to by-pass coreIR's
-                    #   checking, even though it's connected below
-                    self.wire(self.ports[sb_name], mux.ports.I)
+
+                    if self.ready_valid:
+                        vi = self.add_port(sb_name + "_valid", bit_in)
+                        ro = self.add_port(sb_name + "_ready", bit_out)
+                        self.wire(vi, switchbox.ports[sb_name + "_valid_in"])
+                        self.wire(ro, switchbox.ports[sb_name + "_ready_out"])
                 else:
                     self.add_port(sb_name, magma.Out(port.base_type()))
+                    if self.ready_valid:
+                        vo = self.add_port(sb_name + "_valid", bit_out)
+                        ri = self.add_port(sb_name + "_ready", bit_in)
+
+                        self.wire(vo, switchbox.ports[sb_name + "_valid_out"])
+                        self.wire(ri, switchbox.ports[sb_name + "_ready_in"])
+
                 assert port.owner() == switchbox
                 self.wire(self.ports[sb_name], port)
 
@@ -507,20 +704,25 @@ class TileCircuit(generator.Generator):
         for _, cb in self.cbs.items():
             conn_ins = cb.node.get_conn_in()
             for idx, node in enumerate(conn_ins):
-                assert isinstance(node, (SwitchBoxNode, RegisterMuxNode, PortNode))
+                assert isinstance(node,
+                                  (SwitchBoxNode, RegisterMuxNode, PortNode))
                 # for IO tiles they have connections to other tiles
                 if node.x != self.x or node.y != self.y:
                     continue
                 bit_width = node.width
                 sb_circuit = self.sbs[bit_width]
                 if not isinstance(node, PortNode):
+                    # get the internal wire
+                    n, sb_mux = sb_circuit.sb_muxs[str(node)]
+                    assert n == node
+                    sb_name = create_name(str(node))
                     if node.io == SwitchBoxIO.SB_IN:
-                        # get the internal wire
-                        n, sb_mux = sb_circuit.sb_muxs[str(node)]
-                        assert n == node
-                        self.wire(sb_mux.ports.O, cb.ports.I[idx])
+                        self.wire(self.ports[sb_name], cb.ports.I[idx])
+                        if self.ready_valid:
+                            port_name = create_name(str(node)) + "_valid"
+                            self.wire(self.ports[port_name],
+                                      cb.ports.valid_in[idx])
                     else:
-                        sb_name = create_name(str(node))
                         self.wire(sb_circuit.ports[sb_name], cb.ports.I[idx])
                 else:
                     # this is an additional core port
@@ -528,34 +730,73 @@ class TileCircuit(generator.Generator):
                     width = node.width
                     tile = self.tiles[width]
                     self.wire(tile.get_port_ref(node.name), cb.ports.I[idx])
+                    if self.ready_valid:
+                        raise RuntimeError(
+                            "port to port connection not "
+                            "supported for ready-valid")
 
         # connect ports from core to switch box
         for bit_width, tile in self.tiles.items():
+            sb_circuit = self.sbs[bit_width]
             for _, port_node in tile.ports.items():
-                if len(port_node) > 0:
-                    assert len(port_node.get_conn_in()) == 0
-                    port_name = port_node.name
-                    for sb_node in port_node:
-                        assert isinstance(sb_node, (SwitchBoxNode, PortNode))
-                        if isinstance(sb_node, PortNode):
-                            continue
-                        # for IO tiles they have connections to other tiles
-                        if sb_node.x != self.x or sb_node.y != self.y:
-                            continue
-                        idx = sb_node.get_conn_in().index(port_node)
-                        sb_circuit = self.sbs[port_node.width]
-                        # we need to find the actual mux
-                        n, mux = sb_circuit.sb_muxs[str(sb_node)]
-                        assert n == sb_node
-                        # the generator doesn't allow circular reference
-                        # we have to be very creative here
-                        if port_name not in sb_circuit.ports:
-                            sb_circuit.add_port(port_name,
-                                                magma.In(magma.Bits[bit_width]))
-                            self.wire(self.__get_port(port_name),
-                                      sb_circuit.ports[port_name])
-                        sb_circuit.wire(sb_circuit.ports[port_name],
-                                        mux.ports.I[idx])
+                if len(port_node) == 0:
+                    continue
+                assert len(port_node.get_conn_in()) == 0
+                port_name = port_node.name
+                for sb_node in port_node:
+                    assert isinstance(sb_node, (SwitchBoxNode, PortNode))
+                    if isinstance(sb_node, PortNode):
+                        continue
+                    # for IO tiles they have connections to other tiles
+                    if sb_node.x != self.x or sb_node.y != self.y:
+                        continue
+                    idx = sb_node.get_conn_in().index(port_node)
+                    # we need to find the actual mux
+                    n, mux = sb_circuit.sb_muxs[str(sb_node)]
+                    assert n == sb_node
+                    # the generator doesn't allow circular reference
+                    # we have to be very creative here
+                    if port_name not in sb_circuit.ports:
+                        sb_circuit.add_port(port_name,
+                                            magma.In(magma.Bits[bit_width]))
+                        self.wire(self.__get_port(port_name),
+                                  sb_circuit.ports[port_name])
+                    sb_circuit.wire(sb_circuit.ports[port_name],
+                                    mux.ports.I[idx])
+
+                if self.ready_valid:
+                    # need to create fan-in logic
+                    sb_circuit.handle_node_fanin(port_node)
+                    ready_in = port_node.name + "_ready"
+                    ready_out = port_node.name + "_ready_out"
+                    self.wire(sb_circuit.ports[ready_out],
+                              self.core.ports[ready_in])
+                    valid_port = sb_circuit.add_port_valid(port_node)
+                    loop_back = ReadyValidLoopBack.get()
+                    loop_back.instance_name = port_node.name + "_loopback"
+                    self.wire(loop_back.ports.ready_in[0], sb_circuit.ports[ready_out])
+                    valid_out = port_node.name + "_valid"
+                    self.wire(loop_back.ports.valid_in[0], self.core.ports[valid_out])
+                    self.wire(loop_back.ports.valid_out[0], valid_port)
+
+        # CB ready-valid
+        if self.ready_valid:
+            for bit_width, tile in self.tiles.items():
+                sb_circuit = self.sbs[bit_width]
+                for _, port_node in tile.ports.items():
+                    if len(port_node) != 0:
+                        continue
+                    cb = self.cbs[port_node.name]
+                    out_sel = port_node.name + "_out_sel"
+                    enable = port_node.name + "_enable"
+                    ready = port_node.name + "_ready"
+                    self.wire(cb.ports.out_sel, sb_circuit.ports[out_sel])
+                    self.wire(cb.ports.valid_out,
+                              self.core.ports[port_node.name + "_valid"])
+                    self.wire(cb.ports.ready_in,
+                              self.core.ports[ready])
+                    self.wire(cb.ports.enable, sb_circuit.ports[enable][0])
+                    self.wire(cb.ports.ready_out, sb_circuit.ports[ready])
 
         self.__add_tile_id()
         # add ports
@@ -569,7 +810,7 @@ class TileCircuit(generator.Generator):
         self.instance_name = f"Tile_X{self.x:02X}_Y{self.y:02X}"
 
         # add features
-        self.__features: List[generator.Generator] = []
+        self.__features: List[GemstoneGenerator] = []
         # users are free to add more features to the core
 
         # add feature
@@ -789,14 +1030,18 @@ class TileCircuit(generator.Generator):
             if "config_en" in feat.ports:
                 self.wire(decode_feat[i].ports.O, feat.ports["config_en"])
 
-    def add_feature(self, feature: generator.Generator):
-        assert isinstance(feature, generator.Generator)
+    def add_feature(self, feature: GemstoneGenerator):
+        assert isinstance(feature, GemstoneGenerator)
         self.__features.append(feature)
 
-    def features(self) -> List[generator.Generator]:
+    def features(self) -> List[GemstoneGenerator]:
         return self.__features
 
-    def get_route_bitstream_config(self, src_node: Node, dst_node: Node):
+    __CONFIG_TYPE = Tuple[int, int, int]
+    __BITSTREAM_TYPE = Union[__CONFIG_TYPE, List[__CONFIG_TYPE]]
+
+    def get_route_bitstream_config(self, src_node: Node, dst_node: Node,
+                                   ready_valid: bool = False) -> __BITSTREAM_TYPE:
         assert src_node.width == dst_node.width
         tile = self.tiles[src_node.width]
         assert dst_node.x == tile.x and dst_node.y == tile.y, \
@@ -817,7 +1062,34 @@ class TileCircuit(generator.Generator):
         reg_name = get_mux_sel_name(dst_node)
         reg_idx, config_data = circuit.get_config_data(reg_name, config_data)
         feature_addr = self.features().index(circuit)
-        return reg_idx, feature_addr, config_data
+        base_config = reg_idx, feature_addr, config_data
+        if self.ready_valid:
+            configs = [base_config]
+            # need to get mux enable if necessary
+            circuit = None
+            if isinstance(dst_node, SwitchBoxNode):
+                circuit = self.sbs[src_node.width]
+            elif isinstance(dst_node, PortNode):
+                circuit = self.cbs[dst_node.name]
+
+            def add_additional_config(name, value, _circuit):
+                _reg_idx, _config_data = _circuit.get_config_data(name, value)
+                _feature_addr = self.features().index(_circuit)
+                _additional_config = _reg_idx, _feature_addr, _config_data
+                configs.append(_additional_config)
+
+            if circuit is not None:
+                add_additional_config(str(dst_node) + "_enable", 1, circuit)
+
+            if ready_valid:
+                # this means we have to turn on fifo mode
+                if isinstance(dst_node, RegisterMuxNode) and isinstance(src_node, RegisterNode):
+                    # we only turn this on if it's a path from register to mux with ready-valid
+                    circuit = self.sbs[src_node.width]
+                    reg_name = str(src_node) + "_fifo"
+                    add_additional_config(reg_name, 1, circuit)
+            return configs
+        return base_config
 
     def __lift_ports(self):
         # lift the internal ports only if we have empty switch boxes

@@ -1,5 +1,5 @@
 from hwtypes import BitVector
-from gemstone.common.dummy_core_magma import DummyCore
+from gemstone.common.dummy_core_magma import DummyCore, ReadyValidCore
 from gemstone.common.testers import BasicTester
 from gemstone.common.util import compress_config_data
 from canal.checker import check_graph_isomorphic
@@ -31,7 +31,8 @@ def assert_coordinate(node: Node, x: int, y: int):
     assert node.x == x and node.y == y
 
 
-def create_dummy_cgra(chip_size, num_tracks, reg_mode, wiring, num_cfg=1):
+def create_dummy_cgra(chip_size, num_tracks, reg_mode, wiring, num_cfg=1,
+                      ready_valid=False):
     addr_width = 8
     data_width = 32
     bit_widths = [1, 16]
@@ -41,9 +42,13 @@ def create_dummy_cgra(chip_size, num_tracks, reg_mode, wiring, num_cfg=1):
     # we don't want duplicated cores when snapping into different interconnect
     # graphs
     cores = {}
+    if ready_valid:
+        core_type = ReadyValidCore
+    else:
+        core_type = DummyCore
     for x in range(chip_size):
         for y in range(chip_size):
-            cores[(x, y)] = DummyCore()
+            cores[(x, y)] = core_type()
 
     def create_core(xx: int, yy: int):
         return cores[(xx, yy)]
@@ -71,7 +76,7 @@ def create_dummy_cgra(chip_size, num_tracks, reg_mode, wiring, num_cfg=1):
                                          pipeline_regs)
         ics[bit_width] = ic
     interconnect = Interconnect(ics, addr_width, data_width, tile_id_width,
-                                lift_ports=True)
+                                lift_ports=True, ready_valid=ready_valid)
     # finalize the design
     interconnect.finalize()
     # wiring
@@ -81,7 +86,7 @@ def create_dummy_cgra(chip_size, num_tracks, reg_mode, wiring, num_cfg=1):
         apply_global_meso_wiring(interconnect)
     else:
         assert wiring == GlobalSignalWiring.ParallelMeso
-        apply_global_parallel_meso_wiring(interconnect, num_cfg)
+        apply_global_parallel_meso_wiring(interconnect, num_cfg=num_cfg)
 
     return bit_widths, data_width, ics, interconnect
 
@@ -374,6 +379,21 @@ def test_parallel_meso_wiring(num_cfg: int):
         magma.compile(rtl_path, circuit, output="coreir-verilog")
 
 
+def test_ready_valid():
+    _, _, _, interconnect = create_dummy_cgra(2,
+                                              2,
+                                              True,
+                                              GlobalSignalWiring.ParallelMeso,
+                                              ready_valid=True)
+    # assert tile coordinates
+    circuit = interconnect.circuit()
+
+    # just check it compiles to rtl
+    with tempfile.TemporaryDirectory() as tempdir:
+        rtl_path = os.path.join(tempdir, "rtl")
+        magma.compile(rtl_path, circuit, output="coreir-verilog")
+
+
 def test_skip_addr():
     _, _, _, interconnect = create_dummy_cgra(2, 2, False,
                                               GlobalSignalWiring.ParallelMeso)
@@ -381,3 +401,7 @@ def test_skip_addr():
     interconnect.tile_circuits[(1, 1)].core.skip_compression = True
     skip_addrs = interconnect.get_skip_addr()
     assert len(skip_addrs) == 256
+
+
+if __name__ == "__main__":
+    test_ready_valid()
