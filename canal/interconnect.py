@@ -244,11 +244,15 @@ class Interconnect(generator.Generator):
                     self.wire(self.ports[new_sb_name], sb_port)
                     if self.ready_valid:
                         if sb_node.io == SwitchBoxIO.SB_OUT:
-                            p = self.add_port(new_sb_name + "_ready", magma.In(magma.Bit))
+                            ready_name = new_sb_name + "_ready"
+                            p = self.add_port(ready_name, magma.In(magma.Bit))
                             self.wire(p, tile.ports[sb_name + "_ready"])
+                            self.__interface[ready_name] = sb_port
                         else:
-                            p = self.add_port(new_sb_name + "_valid", magma.BitIn)
+                            valid_name = new_sb_name + "_valid"
+                            p = self.add_port(valid_name, magma.BitIn)
                             self.wire(p, tile.ports[sb_name + "_valid"])
+                            self.__interface[valid_name] = sb_port
 
     def __connect_margin_tiles(self):
         # connect these margin tiles
