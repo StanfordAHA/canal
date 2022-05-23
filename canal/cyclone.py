@@ -741,11 +741,15 @@ class InterconnectGraph:
             return tile.get_sb(item.side, item.track, item.io) == item
         return False
 
-    def dump_graph(self, filename: str, max_num_col):
+    def dump_graph(self, filename: str, region: Tuple[Tuple[int, int], Tuple[int, int]]):
         with open(filename, "w+") as f:
             padding = "  "
             begin = "BEGIN"
             end = "END"
+            x_min = region[0][0]
+            y_min = region[0][1]
+            x_max = region[1][0]
+            y_max = region[1][1]
 
             def write_line(value):
                 f.write(value + "\n")
@@ -754,7 +758,7 @@ class InterconnectGraph:
                 if len(node_) == 0:
                     # don't output if it doesn't have any connections
                     return
-                if node_.x >= max_num_col:
+                if node_.x < x_min or node_.x > x_max or node_.y < y_min or node_.y > y_max:
                     return
                 # TODO: need to test if it is deterministic
                 write_line(padding + node_.node_str())
@@ -765,7 +769,8 @@ class InterconnectGraph:
                         if node_.x == n.x and node_.y == n.y:
                             # this is internal connection so we skip
                             continue
-                    if n.x >= max_num_col:
+                    if n.x < x_min or n.x > x_max or n.y < y_min or n.y > y_max:
+                        # If it connects to a tile outside of the region, we skip
                         continue
                     write_line(padding * 3 + n.node_str())
                 write_line(padding + end)
@@ -780,9 +785,9 @@ class InterconnectGraph:
                                                   str(track_to),
                                                   str(side_to.value)]))
                 write_line(end)
-            for (x, _), tile in self.__tiles.items():
-                if x >= max_num_col:
-                    # since x starts from 0, if x == max_num_col, we are actually out of bound
+            for (x, y), tile in self.__tiles.items():
+                if x < x_min or x > x_max or y < y_min or y > y_max:
+                    # Check if a tile is in the region or not
                     continue
                 write_line(str(tile))
                 sbs = tile.switchbox.get_all_sbs()

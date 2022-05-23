@@ -547,18 +547,17 @@ class Interconnect(generator.Generator):
             os.mkdir(dir_name)
         dir_name = os.path.abspath(dir_name)
         if region is None:
-            region = ((self.x_min, ))
-            max_num_col = self.x_max + 1
+            region = ((self.x_min, self.y_min), (self.x_max, self.y_max))
 
         graph_path_dict = {}
         for bit_width, graph in self.__graphs.items():
             graph_path = os.path.join(dir_name, f"{bit_width}.graph")
             graph_path_dict[bit_width] = graph_path
-            graph.dump_graph(graph_path, max_num_col)
+            graph.dump_graph(graph_path, region)
 
         # generate the layout file
         layout_file = os.path.join(dir_name, f"{design_name}.layout")
-        self.__dump_layout_file(layout_file, max_num_col)
+        self.__dump_layout_file(layout_file, region)
         pnr_file = os.path.join(dir_name, f"{design_name}.info")
         with open(pnr_file, "w+") as f:
             f.write(f"layout={layout_file}\n")
@@ -567,12 +566,12 @@ class Interconnect(generator.Generator):
             graph_config_str = " ".join(graph_configs)
             f.write(f"graph={graph_config_str}\n")
 
-    def __dump_layout_file(self, layout_file, max_num_col):
+    def __dump_layout_file(self, layout_file, region):
         # empty tiles first first
         with open(layout_file, "w+") as f:
             f.write("LAYOUT   0 20\nBEGIN\n")
-            for y in range(self.y_max + 1):
-                for x in range(max_num_col):
+            for y in range(region[1][0], region[1][1] + 1):
+                for x in range(region[0][0], region[1][0] + 1):
                     coord = (x, y)
                     if coord not in self.tile_circuits:
                         f.write("1")
@@ -591,8 +590,8 @@ class Interconnect(generator.Generator):
                     priority_major, priority_minor = tag_to_priority[tag]
                     f.write(f"LAYOUT {tag} {priority_major} {priority_minor}\n")
                     f.write("BEGIN\n")
-                    for y in range(self.y_max + 1):
-                        for x in range(max_num_col):
+                    for y in range(region[1][0], region[1][1] + 1):
+                        for x in range(region[0][0], region[1][0] + 1):
                             coord = (x, y)
                             if coord not in self.tile_circuits:
                                 f.write("0")
@@ -610,8 +609,8 @@ class Interconnect(generator.Generator):
             assert "r" not in tag_to_name
             r_locs = self.__get_registered_tile()
             f.write(f"LAYOUT r {default_priority} 0\nBEGIN\n")
-            for y in range(self.y_max + 1):
-                for x in range(max_num_col):
+            for y in range(region[1][0], region[1][1] + 1):
+                for x in range(region[0][0], region[1][0] + 1):
                     if (x, y) in r_locs:
                         f.write("1")
                     else:
