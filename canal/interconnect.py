@@ -570,7 +570,7 @@ class Interconnect(generator.Generator):
         # empty tiles first first
         with open(layout_file, "w+") as f:
             f.write("LAYOUT   0 20\nBEGIN\n")
-            for y in range(region[1][0], region[1][1] + 1):
+            for y in range(region[0][1], region[1][1] + 1):
                 for x in range(region[0][0], region[1][0] + 1):
                     coord = (x, y)
                     if coord not in self.tile_circuits:
@@ -590,7 +590,7 @@ class Interconnect(generator.Generator):
                     priority_major, priority_minor = tag_to_priority[tag]
                     f.write(f"LAYOUT {tag} {priority_major} {priority_minor}\n")
                     f.write("BEGIN\n")
-                    for y in range(region[1][0], region[1][1] + 1):
+                    for y in range(region[0][1], region[1][1] + 1):
                         for x in range(region[0][0], region[1][0] + 1):
                             coord = (x, y)
                             if coord not in self.tile_circuits:
@@ -609,7 +609,7 @@ class Interconnect(generator.Generator):
             assert "r" not in tag_to_name
             r_locs = self.__get_registered_tile()
             f.write(f"LAYOUT r {default_priority} 0\nBEGIN\n")
-            for y in range(region[1][0], region[1][1] + 1):
+            for y in range(region[0][1], region[1][1] + 1):
                 for x in range(region[0][0], region[1][0] + 1):
                     if (x, y) in r_locs:
                         f.write("1")
