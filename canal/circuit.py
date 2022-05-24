@@ -74,7 +74,7 @@ def create_mux(node: Node, suffix: str = "", width: int = 0, ready_valid=False):
         mux = AOIMuxWrapper(height, width,
                             mux_type=AOIMuxType.RegularReadyValid, name=name)
     else:
-        mux = MuxWrapper(height, width, name=name)
+        mux = AOIMuxWrapper(height, width, mux_type=AOIMuxType.Regular, name=name)
     return flatten_mux(mux, ready_valid=ready_valid)
 
 
