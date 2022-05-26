@@ -783,14 +783,21 @@ class TileCircuit(GemstoneGenerator):
                     sb_circuit.handle_node_fanin(port_node)
                     ready_in = port_node.name + "_ready"
                     ready_out = port_node.name + "_ready_out"
-                    self.wire(sb_circuit.ports[ready_out],
-                              self.core.ports[ready_in])
+                    core_ready_in = self.core.ports[ready_in]
+                    t = core_ready_in.base_type()
+                    if t is magma.In(magma.Bits[1]):
+                        core_ready_in = core_ready_in[0]
+                    self.wire(sb_circuit.ports[ready_out], core_ready_in)
                     valid_port = sb_circuit.add_port_valid(port_node)
                     loop_back = ReadyValidLoopBack.get()
                     loop_back.instance_name = port_node.name + "_loopback"
                     self.wire(loop_back.ports.ready_in[0], sb_circuit.ports[ready_out])
                     valid_out = port_node.name + "_valid"
-                    self.wire(loop_back.ports.valid_in[0], self.core.ports[valid_out])
+                    core_valid_out = self.core.ports[valid_out]
+                    t = core_valid_out.base_type()
+                    if t is magma.Out(magma.Bits[1]):
+                        core_valid_out = core_valid_out[0]
+                    self.wire(loop_back.ports.valid_in[0], core_valid_out)
                     self.wire(loop_back.ports.valid_out[0], valid_port)
 
         # CB ready-valid
@@ -804,13 +811,18 @@ class TileCircuit(GemstoneGenerator):
                     out_sel = port_node.name + "_out_sel"
                     enable = port_node.name + "_enable"
                     ready = port_node.name + "_ready"
+                    valid = port_node.name + "_valid"
                     self.wire(cb.ports.out_sel, sb_circuit.ports[out_sel])
                     no_rv = port_node.name in self.combinational_ports
                     if not no_rv:
-                        self.wire(cb.ports.valid_out,
-                                  self.core.ports[port_node.name + "_valid"])
-                        self.wire(cb.ports.ready_in,
-                                  self.core.ports[ready])
+                        core_ready = self.core.ports[ready]
+                        core_valid = self.core.ports[valid]
+                        t = core_ready.base_type()
+                        if t is magma.Out(magma.Bits[1]):
+                            core_ready = core_ready[0]
+                            core_valid = core_valid[0]
+                        self.wire(cb.ports.valid_out, core_valid)
+                        self.wire(cb.ports.ready_in, core_ready)
                     self.wire(cb.ports.enable, sb_circuit.ports[enable][0])
                     self.wire(cb.ports.ready_out, sb_circuit.ports[ready])
 

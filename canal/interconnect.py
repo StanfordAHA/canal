@@ -271,6 +271,12 @@ class Interconnect(generator.Generator):
                         self.add_port(new_port_name, tile_port.base_type())
                         self.__interface[new_port_name] = port_node
                         self.wire(self.ports[new_port_name], tile_port)
+
+                        # need to create ready-valid port for them as well
+                        if self.ready_valid:
+                            ready_port = self.tile_circuits[coord].ports[port_name + "_ready"]
+
+                            new_port_name = f"{port_name}_ready_X{x:02X}_Y{y:02X}"
                     else:
                         # connect them to the internal fabric
                         nodes = list(port_node) + port_node.get_conn_in()[:]
@@ -308,16 +314,28 @@ class Interconnect(generator.Generator):
             for bit_width, tile in tile_dict.items():
                 ground = Const(magma.Bits[bit_width](0))
                 for sb in tile.switchbox.get_all_sbs():
-                    if sb.io != SwitchBoxIO.SB_IN:
-                        continue
-                    if sb.get_conn_in():
-                        continue
-                    # no connection to that sb port, ground it
-                    sb_name = create_name(str(sb))
-                    sb_port = self.tile_circuits[coord].ports[sb_name]
-                    self.wire(ground, sb_port)
-                    if self.ready_valid:
-                        self.wire(ground, self.tile_circuits[coord].ports[sb_name + "_ready"])
+                    if sb.io == SwitchBoxIO.SB_IN:
+                        if sb.get_conn_in():
+                            continue
+                        # no connection to that sb port, ground it
+                        sb_name = create_name(str(sb))
+                        sb_port = self.tile_circuits[coord].ports[sb_name]
+                        self.wire(ground, sb_port)
+                        if self.ready_valid:
+                            self.wire(Const(magma.Bit(0)), self.tile_circuits[coord].ports[sb_name + "_valid"])
+                    else:
+                        margin = False
+                        if len(sb) > 0:
+                            for n in sb:
+                                if isinstance(n, RegisterMuxNode):
+                                    margin = len(n) == 0
+                        else:
+                            margin = True
+                        if not margin:
+                            continue
+                        if self.ready_valid:
+                            sb_name = create_name(str(sb))
+                            self.wire(Const(magma.Bit(0)), self.tile_circuits[coord].ports[sb_name + "_ready"])
 
     def __cleanup_tiles(self):
         tiles_to_remove = set()
