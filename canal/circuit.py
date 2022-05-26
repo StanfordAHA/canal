@@ -633,9 +633,12 @@ class TileCircuit(GemstoneGenerator):
         self.core_interface = core
 
         # compute combinational core ports
-        self.combinational_ports = self.core_interface.combinational_ports()
-        for a_core in self.additional_cores:
-            self.combinational_ports = self.combinational_ports.union(a_core.combinationa_ports())
+        if self.core_interface is None:
+            self.combinational_ports = set()
+        else:
+            self.combinational_ports = self.core_interface.combinational_ports()
+            for a_core in self.additional_cores:
+                self.combinational_ports = self.combinational_ports.union(a_core.combinationa_ports())
 
         # create cb and switchbox
         self.cbs: Dict[str, CB] = {}
@@ -802,10 +805,12 @@ class TileCircuit(GemstoneGenerator):
                     enable = port_node.name + "_enable"
                     ready = port_node.name + "_ready"
                     self.wire(cb.ports.out_sel, sb_circuit.ports[out_sel])
-                    self.wire(cb.ports.valid_out,
-                              self.core.ports[port_node.name + "_valid"])
-                    self.wire(cb.ports.ready_in,
-                              self.core.ports[ready])
+                    no_rv = port_node.name in self.combinational_ports
+                    if not no_rv:
+                        self.wire(cb.ports.valid_out,
+                                  self.core.ports[port_node.name + "_valid"])
+                        self.wire(cb.ports.ready_in,
+                                  self.core.ports[ready])
                     self.wire(cb.ports.enable, sb_circuit.ports[enable][0])
                     self.wire(cb.ports.ready_out, sb_circuit.ports[ready])
 
@@ -1176,7 +1181,10 @@ class CoreInterface(InterconnectCore):
             return self.output_ports[port_name][1]
 
     def combinational_ports(self):
-        return self.core.combinationa_ports()
+        res = set()
+        for p in self.core.combinationa_ports():
+            res.add(p.qualified_name())
+        return res
 
     @staticmethod
     def __get_bit_width(port):

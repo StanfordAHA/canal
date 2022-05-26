@@ -850,9 +850,11 @@ def test_tile_ready_valid():
 
     input_port_name = f"data_in_{bit_width}b"
     output_port_name = f"data_out_{bit_width}b"
+    comb_port_name = f"data_in_{bit_width}b_comb"
 
     tile.set_core_connection(input_port_name, input_connections)
     tile.set_core_connection(output_port_name, output_connections)
+    tile.set_core_connection(comb_port_name, input_connections)
 
     tile_circuit = TileCircuit({16: tile}, addr_width, data_width,
                                tile_id_width=tile_id_width,
