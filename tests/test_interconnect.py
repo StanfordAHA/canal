@@ -71,7 +71,8 @@ def create_dummy_cgra(chip_size, num_tracks, reg_mode, wiring, num_cfg=1,
                                          create_core,
                                          {f"data_in_{bit_width}b": in_conn,
                                           f"data_out_{bit_width}b": out_conn,
-                                          f"data_in_{bit_width}b_comb": in_conn},
+                                          f"data_in_{bit_width}b_comb":
+                                              in_conn},
                                          {track_length: num_tracks},
                                          SwitchBoxType.Disjoint,
                                          pipeline_regs)
