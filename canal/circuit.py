@@ -638,7 +638,7 @@ class TileCircuit(GemstoneGenerator):
         else:
             self.combinational_ports = self.core_interface.combinational_ports()
             for a_core in self.additional_cores:
-                self.combinational_ports = self.combinational_ports.union(a_core.combinationa_ports())
+                self.combinational_ports = self.combinational_ports.union(a_core.combinational_ports())
 
         # create cb and switchbox
         self.cbs: Dict[str, CB] = {}
