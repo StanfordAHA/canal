@@ -1182,8 +1182,9 @@ class CoreInterface(InterconnectCore):
 
     def combinational_ports(self):
         res = set()
-        for p in self.core.combinationa_ports():
-            res.add(p.qualified_name())
+        if self.core is not None:
+            for p in self.core.combinational_ports():
+                res.add(p.qualified_name())
         return res
 
     @staticmethod
