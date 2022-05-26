@@ -5,7 +5,7 @@ with adjustments due to language difference.
 
 """
 import enum
-from typing import List, Tuple, Dict, Union, NamedTuple, Iterator
+from typing import List, Tuple, Dict, Union, NamedTuple, Iterator, Set
 from ordered_set import OrderedSet
 from abc import abstractmethod
 
@@ -81,6 +81,9 @@ class InterconnectCore:
     @abstractmethod
     def __eq__(self, other):
         pass
+
+    def combinational_ports(self) -> Set[str]:
+        return set()
 
 
 class Node:

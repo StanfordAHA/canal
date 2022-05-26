@@ -632,6 +632,11 @@ class TileCircuit(GemstoneGenerator):
         self.core = core.core
         self.core_interface = core
 
+        # compute combinational core ports
+        self.combinational_ports = self.core_interface.combinational_ports()
+        for a_core in self.additional_cores:
+            self.combinational_ports = self.combinational_ports.union(a_core.combinationa_ports())
+
         # create cb and switchbox
         self.cbs: Dict[str, CB] = {}
         self.sbs: Dict[int, SB] = {}
@@ -653,6 +658,12 @@ class TileCircuit(GemstoneGenerator):
                             ready_valid=self.ready_valid)
                     self.wire(cb.ports.O, port_ref)
                     self.cbs[port_name] = cb
+
+                    # if the input is combinational, wire constant
+                    no_rv = self.ready_valid and port_name in self.combinational_ports
+                    if no_rv:
+                        # we wire constant 1 to ready valid port
+                        self.wire(cb.ports.ready_in, Const(1))
                 else:
                     # output ports
                     assert len(port_node.get_conn_in()) == 0
@@ -1163,6 +1174,9 @@ class CoreInterface(InterconnectCore):
             return self.input_ports[port_name][1]
         else:
             return self.output_ports[port_name][1]
+
+    def combinational_ports(self):
+        return self.core.combinationa_ports()
 
     @staticmethod
     def __get_bit_width(port):
