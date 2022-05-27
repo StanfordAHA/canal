@@ -1,10 +1,11 @@
-from gemstone.common.dummy_core_magma import DummyCore
+from gemstone.common.dummy_core_magma import DummyCore, ReadyValidCore
 from canal.circuit import *
 from canal.util import *
 from canal.global_signal import *
 import tempfile
 import magma
 import os
+import pytest
 
 
 def test_empty_tile():
@@ -18,21 +19,34 @@ def test_empty_tile():
     tile_circuit.circuit()
 
 
-def test_empty_switch_box():
-    bit_width = 1
-    core = CoreInterface(DummyCore())
+@pytest.mark.parametrize("ready_valid", [True, False])
+def test_empty_switch_box(ready_valid):
+    if ready_valid:
+        bit_width = 16
+    else:
+        bit_width = 1
+    if ready_valid:
+        c = ReadyValidCore
+    else:
+        c = DummyCore
+    core = CoreInterface(c())
     tile = Tile(0, 0, bit_width, SwitchBox(0, 0, 0, bit_width, []))
     tile.set_core(core)
     # because we need something to be connected to the core node
     # otherwise it's an illogical tile
     sb_node = SwitchBoxNode(0, 1, 0, bit_width, SwitchBoxSide.NORTH,
                             SwitchBoxIO.SB_IN)
-    sb_node.add_edge(tile.ports["data_in_1b"])
+    if ready_valid:
+        sb_node.add_edge(tile.ports["data_in_16b"])
+    else:
+        sb_node.add_edge(tile.ports["data_in_1b"])
 
-    tile_circuit = TileCircuit({bit_width: tile}, 8, 32)
+    tile_circuit = TileCircuit({bit_width: tile}, 8, 32,
+                               ready_valid=ready_valid)
     tile_circuit.finalize()
-    # also need to ground the 16 bit
-    tile_circuit.wire(Const(0), tile_circuit.core.ports["data_in_16b"])
+    # also need to ground the other bit
+    if not ready_valid:
+        tile_circuit.wire(Const(0), tile_circuit.core.ports["data_in_16b"])
     circuit = tile_circuit.circuit()
     with tempfile.TemporaryDirectory() as tempdir:
         filename = os.path.join(tempdir, "tile")
@@ -91,4 +105,4 @@ def test_empty_tile_util():
 
 
 if __name__ == "__main__":
-    test_empty_switch_box()
+    test_empty_switch_box(True)
