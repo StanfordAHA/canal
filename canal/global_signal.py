@@ -107,9 +107,8 @@ def apply_global_meso_wiring(interconnect: Interconnect, io_sides: IOSide = IOSi
                 pre_port = pass_signal_through(tile, signal)
                 pre_ports.append(pre_port)
             # second pass to wire them up
-            for i in range(start, end - 1):
+            for pre_port, i in zip(pre_ports, range(start, end - 1)):
                 next_tile = column[i + 1]
-                pre_port = pre_ports[i]
                 interconnect.wire(pre_port,
                                   next_tile.ports[signal])
 
