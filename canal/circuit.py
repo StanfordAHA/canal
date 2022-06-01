@@ -1141,7 +1141,8 @@ class TileCircuit(GemstoneGenerator):
     def __lift_ports(self):
         # lift the internal ports only if we have empty switch boxes
         for bit_width, sb in self.sbs.items():
-            if sb.switchbox.num_track > 0:
+            empty_sb = sb.switchbox.num_track == 0
+            if self.core is None:
                 continue
             # lift the input ports up
             for bt, port_name in self.core_interface.inputs():
@@ -1151,7 +1152,8 @@ class TileCircuit(GemstoneGenerator):
                 # we lift the port up first
                 # if it has no connection, then we lift it up
                 port_node = self.tiles[bit_width].ports[port_name]
-                if port_node.get_conn_in():
+                if port_node.get_conn_in() and empty_sb:
+                    # input
                     cb_input_port = self.cbs[port_name].ports.I
                     # use the CB input type instead
                     self.add_port(port_name, cb_input_port.base_type())
@@ -1162,7 +1164,7 @@ class TileCircuit(GemstoneGenerator):
                         self.wire(p, self.cbs[port_name].ports.ready_in)
                         p = self.add_port(port_name + "_valid", magma.BitOut)
                         self.wire(p, self.cbs[port_name].ports.valid_out)
-                else:
+                elif empty_sb or len(port_node.get_conn_in()) == 0:
                     self.add_port(port_name, magma.In(magma.Bits[bit_width]))
                     self.wire(self.ports[port_name], self.core.ports[port_name])
                     if self.ready_valid and port_name not in self.combinational_ports:
@@ -1183,18 +1185,20 @@ class TileCircuit(GemstoneGenerator):
                 # depends on if the port has any connection or not
                 # we lift the port up first
                 # if it has connection, then we connect it to the core
-                self.add_port(port_name, magma.Out(magma.Bits[bit_width]))
-                self.wire(self.ports[port_name], self.core.ports[port_name])
-                if self.ready_valid and port_name not in self.combinational_ports:
-                    core_ready = self.core.ports[port_name + "_ready"]
-                    core_valid = self.core.ports[port_name + "_valid"]
-                    if core_valid.base_type() is magma.Out(magma.Bits[1]):
-                        core_ready = core_ready[0]
-                        core_valid = core_valid[0]
-                    p = self.add_port(port_name + "_ready", magma.BitIn)
-                    self.wire(p, core_ready)
-                    p = self.add_port(port_name + "_valid", magma.BitOut)
-                    self.wire(p, core_valid)
+                port_node = self.tiles[bit_width].ports[port_name]
+                if empty_sb or len(port_node) == 0:
+                    self.add_port(port_name, magma.Out(magma.Bits[bit_width]))
+                    self.wire(self.ports[port_name], self.core.ports[port_name])
+                    if self.ready_valid and port_name not in self.combinational_ports:
+                        core_ready = self.core.ports[port_name + "_ready"]
+                        core_valid = self.core.ports[port_name + "_valid"]
+                        if core_valid.base_type() is magma.Out(magma.Bits[1]):
+                            core_ready = core_ready[0]
+                            core_valid = core_valid[0]
+                        p = self.add_port(port_name + "_ready", magma.BitIn)
+                        self.wire(p, core_ready)
+                        p = self.add_port(port_name + "_valid", magma.BitOut)
+                        self.wire(p, core_valid)
 
     def name(self):
         if self.core is not None:

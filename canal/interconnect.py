@@ -259,9 +259,12 @@ class Interconnect(generator.Generator):
         # margin tiles have empty switchbox
         for coord, tile_dict in self.__tiles.items():
             for bit_width, tile in tile_dict.items():
-                if tile.switchbox.num_track > 0 or tile.core is None:
+                empty_sb = tile.switchbox.num_track == 0
+                if tile.core is None:
                     continue
                 for port_name, port_node in tile.ports.items():
+                    if port_name not in self.tile_circuits[coord].ports:
+                        continue
                     tile_port = self.tile_circuits[coord].ports[port_name]
                     if len(port_node) == 0 and \
                             len(port_node.get_conn_in()) == 0:
@@ -276,7 +279,7 @@ class Interconnect(generator.Generator):
                         if self.ready_valid:
                             ready_port = self.tile_circuits[coord].ports[port_name + "_ready"]
                             new_port_name = f"{port_name}_ready_X{x:02X}_Y{y:02X}"
-                    else:
+                    elif empty_sb:
                         # connect them to the internal fabric
                         nodes = list(port_node) + port_node.get_conn_in()[:]
                         for sb_node in nodes:
