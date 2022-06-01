@@ -278,7 +278,13 @@ class Interconnect(generator.Generator):
                         # need to create ready-valid port for them as well
                         if self.ready_valid:
                             ready_port = self.tile_circuits[coord].ports[port_name + "_ready"]
-                            new_port_name = f"{port_name}_ready_X{x:02X}_Y{y:02X}"
+                            ready_port_name = f"{port_name}_ready_X{x:02X}_Y{y:02X}"
+                            valid_port = self.tile_circuits[coord].ports[port_name + "_valid"]
+                            valid_port_name = f"{port_name}_valid_X{x:02X}_Y{y:02X}"
+                            p_ready = self.add_port(ready_port_name, ready_port.base_type())
+                            p_valid = self.add_port(valid_port_name, valid_port.base_type())
+                            self.wire(p_ready, ready_port)
+                            self.wire(p_valid, valid_port)
                     elif empty_sb:
                         # connect them to the internal fabric
                         nodes = list(port_node) + port_node.get_conn_in()[:]
