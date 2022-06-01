@@ -285,6 +285,9 @@ class Interconnect(generator.Generator):
                             p_valid = self.add_port(valid_port_name, valid_port.base_type())
                             self.wire(p_ready, ready_port)
                             self.wire(p_valid, valid_port)
+
+                            self.__interface[ready_port_name] = port_node
+                            self.__interface[valid_port_name] = port_node
                     elif empty_sb:
                         # connect them to the internal fabric
                         nodes = list(port_node) + port_node.get_conn_in()[:]
