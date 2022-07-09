@@ -760,9 +760,10 @@ class TileCircuit(GemstoneGenerator):
                     tile = self.tiles[width]
                     self.wire(tile.get_port_ref(node.name), cb.ports.I[idx])
                     if self.ready_valid:
-                        raise RuntimeError(
-                            "port to port connection not "
-                            "supported for ready-valid")
+                        node_valid = node.name + "_valid"
+                        self.wire(tile.ports[node_valid], cb.ports.valid_in[idx])
+                        node_ready = node.name + "_ready"
+                        self.wire(tileports[node_ready], cb.ports.ready_out)
 
         # connect ports from core to switch box
         for bit_width, tile in self.tiles.items():
