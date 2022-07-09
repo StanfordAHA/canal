@@ -528,9 +528,11 @@ class Tile:
                         self.ports[port_name].add_edge(cb_node)
                     self.__port_core[port_name] = core
 
-    def get_port_ref(self, port_name):
-        assert port_name in self.__port_core
-        return self.__port_core[port_name].get_port_ref(port_name)
+    def get_port_ref(self, port_name, core_port_name = None):
+        if core_port_name is None:
+            core_port_name = port_name
+        assert core_port_name in self.__port_core
+        return self.__port_core[core_port_name].get_port_ref(port_name)
 
     def get_port(self, port_name):
         return self.ports.get(port_name, None)

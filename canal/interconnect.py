@@ -263,6 +263,9 @@ class Interconnect(generator.Generator):
                     continue
                 for port_name, port_node in tile.ports.items():
                     tile_port = self.tile_circuits[coord].ports[port_name]
+                    # FIXME: this is a hack
+                    ready_connected = False
+                    valid_connected = False
                     if len(port_node) == 0 and \
                             len(port_node.get_conn_in()) == 0:
                         # lift this port up
@@ -275,7 +278,14 @@ class Interconnect(generator.Generator):
                         # need to create ready-valid port for them as well
                         if self.ready_valid:
                             ready_port = self.tile_circuits[coord].ports[port_name + "_ready"]
-                            new_port_name = f"{port_name}_ready_X{x:02X}_Y{y:02X}"
+                            if ready_port.base_type() is magma.BitIn:
+                                self.wire(Const(magma.VCC), ready_port)
+                            valid_port = self.tile_circuits[coord].ports[port_name + "_valid"]
+                            if valid_port.base_type() is magma.BitIn:
+                                self.wire(Const(magma.VCC), valid_port)
+                            # TODO:
+                            #  wire the actual constants
+
                     else:
                         # connect them to the internal fabric
                         nodes = list(port_node) + port_node.get_conn_in()[:]
@@ -302,10 +312,34 @@ class Interconnect(generator.Generator):
                                 self.tile_circuits[next_coord].ports[sb_name]
                             if len(port_node.get_conn_in()) <= 1:
                                 self.wire(tile_port, next_port)
+                                if self.ready_valid:
+                                    # FIXME: this is a hack to get stuff connected. Notice that the newest CB has
+                                    # connection box, but we haven't dealt with the connection box wide connections
+                                    # yet
+                                    ready_port = self.tile_circuits[coord].ports[port_name + "_ready"]
+                                    if ready_port.base_type() is magma.BitOut:
+                                        next_ready_port = self.tile_circuits[next_coord].ports[sb_name + "_ready"]
+                                        self.wire(next_ready_port, ready_port)
+                                    elif sb_node in port_node and not ready_connected:
+                                        # coming to that node
+                                        next_ready_port = self.tile_circuits[next_coord].ports[sb_name + "_ready"]
+                                        self.wire(next_ready_port, ready_port)
+                                        ready_connected = True
+                                    valid_port = self.tile_circuits[coord].ports[port_name + "_valid"]
+                                    if valid_port.base_type() is magma.BitOut:
+                                        next_valid_port = self.tile_circuits[next_coord].ports[sb_name + "_valid"]
+                                        self.wire(next_valid_port, valid_port)
+                                    elif not valid_connected:
+                                        next_valid_port = self.tile_circuits[next_coord].ports[sb_name + "_valid"]
+                                        self.wire(next_valid_port, valid_port)
+                                        valid_connected = True
                             else:
                                 # need to get the sliced port
                                 idx = port_node.get_conn_in().index(next_node)
                                 self.wire(tile_port[idx], next_port)
+                                if self.ready_valid:
+                                    raise RuntimeError("Not supported")
+
 
     def __ground_ports(self):
         # this is a pass to ground every sb ports that's not connected
