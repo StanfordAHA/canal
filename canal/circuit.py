@@ -139,9 +139,9 @@ class CB(InterconnectConfigurable):
             self.add_config(config_name, self.mux.sel_bits)
             self.wire(self.registers[config_name].ports.O,
                       self.mux.ports.S)
-            self.add_port("out_sel", self.mux.ports.out_sel.base_type())
 
             if ready_valid:
+                self.add_port("out_sel", self.mux.ports.out_sel.base_type())
                 self.wire(self.ports.out_sel, self.mux.ports.out_sel)
                 self.add_config(str(node) + "_enable", 1)
                 enable = self.add_port("enable", magma.BitOut)
