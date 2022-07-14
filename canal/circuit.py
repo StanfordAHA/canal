@@ -861,6 +861,8 @@ class TileCircuit(GemstoneGenerator):
                         t = core_ready.base_type()
                         if t is magma.Out(magma.Bits[1]):
                             core_ready = core_ready[0]
+                        t = core_valid.base_type()
+                        if t is magma.In(magma.Bits[1]):
                             core_valid = core_valid[0]
                         self.wire(cb.ports.valid_out, core_valid)
                         self.wire(cb.ports.ready_in, core_ready)
@@ -1201,8 +1203,9 @@ class TileCircuit(GemstoneGenerator):
                         core_ready = self.core.ports[port_name + "_ready"]
                         core_valid = self.core.ports[port_name + "_valid"]
                         if core_valid.base_type() is magma.In(magma.Bits[1]):
-                            core_ready = core_ready[0]
                             core_valid = core_valid[0]
+                        if core_ready.base_type() is magma.Out(magma.Bits[1]):
+                            core_ready = core_ready[0]
                         p = self.add_port(port_name + "_ready", magma.BitOut)
                         self.safe_wire(p, core_ready)
                         p = self.add_port(port_name + "_valid", magma.BitIn)
@@ -1212,6 +1215,7 @@ class TileCircuit(GemstoneGenerator):
             for bt, port_name in self.core_interface.outputs():
                 if bt != bit_width:
                     continue
+                port_node = self.tiles[bit_width].ports[port_name]
                 # depends on if the port has any connection or not
                 # we lift the port up first
                 # if it has connection, then we connect it to the core
@@ -1221,10 +1225,20 @@ class TileCircuit(GemstoneGenerator):
                     core_ready = self.core.ports[port_name + "_ready"]
                     core_valid = self.core.ports[port_name + "_valid"]
                     if core_valid.base_type() is magma.Out(magma.Bits[1]):
-                        core_ready = core_ready[0]
                         core_valid = core_valid[0]
-                    p = self.add_port(port_name + "_ready", magma.BitIn)
-                    self.wire(p, core_ready)
+                    if core_ready.base_type() is magma.In(magma.Bits[1]):
+                        core_ready = core_ready[0]
+                    if len(port_node) > 1:
+                        fanout = FromMagma(mantle.DefineAnd(len(port_node)))
+                        fanout.instance_name = port_name + "_ready_merge"
+                        p = self.add_port(port_name + "_ready", magma.In(magma.Bits[len(port_node)]))
+                        self.wire(fanout.ports.O[0], core_ready)
+                        # it has to be done with a loop
+                        for i in range(len(port_node)):
+                            self.wire(p[i], fanout.ports[f"I{i}"])
+                    else:
+                        p = self.add_port(port_name + "_ready", magma.BitIn)
+                        self.wire(p, core_ready)
                     p = self.add_port(port_name + "_valid", magma.BitOut)
                     self.wire(p, core_valid)
 
