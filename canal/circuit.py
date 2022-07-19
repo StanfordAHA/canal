@@ -848,7 +848,9 @@ class TileCircuit(GemstoneGenerator):
         self.__add_tile_id()
         # add ports
         self.add_ports(stall=magma.In(magma.Bits[stall_signal_width]),
-                       reset=magma.In(magma.AsyncReset))
+                       reset=magma.In(magma.AsyncReset),
+                       clk=magma.In(magma.Clock),
+        )
 
         # lift ports if there is empty sb
         self.__lift_ports()
@@ -938,18 +940,33 @@ class TileCircuit(GemstoneGenerator):
         for reset_port in reset_ports:
             self.wire(self.ports.reset, reset_port)
 
+    def __add_clk(self):
+        # automatically add clk signal and connect it to the features if the
+        # feature supports it
+        clk_ports = []
+        for feature in self.features():
+            if "clk" in feature.ports.keys():
+                clk_ports.append(feature.ports.clk)
+        # some core may not expose the port as features, such as mem cores
+        if self.core is not None and "clk" in self.core.ports and \
+                self.core.ports.clk not in clk_ports:
+            clk_ports.append(self.core.ports.clk)
+
+        for clk_port in clk_ports:
+            self.wire(self.ports.clk, clk_port)
+
     def __should_add_config(self):
         # a introspection on itself to determine whether to add config
         # or not
         for feature in self.features():
             if "config" in feature.ports:
                 return True
-            else:
+            # else:
                 # if the feature doesn't have config port, it shouldn't have
                 # reset either, although the other way around may be true
                 # that is, a feature may have some internal states that need
                 # to reset, but not necessarily has config port
-                assert "reset" not in feature.ports
+                # assert "reset" not in feature.ports
         return False
 
     def wire_internal(self, port1: str, port2: str):
@@ -982,6 +999,8 @@ class TileCircuit(GemstoneGenerator):
         # add stall and reset signal
         self.__add_stall()
         self.__add_reset()
+        self.__add_clk()
+
 
         # see if we really need to add config or not
         if not self.__should_add_config():
@@ -990,7 +1009,6 @@ class TileCircuit(GemstoneGenerator):
         self.add_ports(
             config=magma.In(ConfigurationType(self.full_config_addr_width,
                                               self.config_data_width)),
-            clk=magma.In(magma.Clock),
             read_config_data=magma.Out(magma.Bits[self.config_data_width])
         )
         # double buffer ports

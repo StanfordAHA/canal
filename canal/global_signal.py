@@ -85,7 +85,6 @@ def apply_global_meso_wiring(interconnect: Interconnect, io_sides: IOSide = IOSi
     for x in range(x_min, x_max + 1):
         column = interconnect.get_column(x)
         # skip the margin
-        column = [entry for entry in column if "config" in entry.ports]
         if len(column) == 0:
             continue
         # wire global inputs to first tile in column
@@ -117,6 +116,7 @@ def apply_global_meso_wiring(interconnect: Interconnect, io_sides: IOSide = IOSi
         # along with OR gate to reduce input read_data with
         # that tile's read_data
         # ports_in keep track of new ports created by or_reduction
+        column = [entry for entry in column if "config" in entry.ports]
         ports_in = []
         for tile in column:
             port_in = or_reduction(tile, "read_data_mux", "read_config_data",
