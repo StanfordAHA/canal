@@ -961,12 +961,6 @@ class TileCircuit(GemstoneGenerator):
         for feature in self.features():
             if "config" in feature.ports:
                 return True
-            # else:
-                # if the feature doesn't have config port, it shouldn't have
-                # reset either, although the other way around may be true
-                # that is, a feature may have some internal states that need
-                # to reset, but not necessarily has config port
-                # assert "reset" not in feature.ports
         return False
 
     def wire_internal(self, port1: str, port2: str):
