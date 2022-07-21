@@ -914,28 +914,28 @@ class TileCircuit(GemstoneGenerator):
     def __add_stall(self):
         # automatically add stall signal and connect it to the features if the
         # feature supports it
-        stall_ports = []
+        stall_ports = set()
         for feature in self.features():
             if "stall" in feature.ports.keys():
-                stall_ports.append(feature.ports.stall)
+                stall_ports.add(feature.ports.stall)
         # some core may not expose the port as features, such as mem cores
         if self.core is not None and "stall" in self.core.ports and \
                 self.core.ports.stall not in stall_ports:
-            stall_ports.append(self.core.ports.stall)
+            stall_ports.add(self.core.ports.stall)
         for stall_port in stall_ports:
             self.wire(self.ports.stall, stall_port)
 
     def __add_reset(self):
         # automatically add reset signal and connect it to the features if the
         # feature supports it
-        reset_ports = []
+        reset_ports = set()
         for feature in self.features():
             if "reset" in feature.ports.keys():
-                reset_ports.append(feature.ports.reset)
+                reset_ports.add(feature.ports.reset)
         # some core may not expose the port as features, such as mem cores
         if self.core is not None and "reset" in self.core.ports and \
                 self.core.ports.reset not in reset_ports:
-            reset_ports.append(self.core.ports.reset)
+            reset_ports.add(self.core.ports.reset)
 
         for reset_port in reset_ports:
             self.wire(self.ports.reset, reset_port)
@@ -943,14 +943,14 @@ class TileCircuit(GemstoneGenerator):
     def __add_clk(self):
         # automatically add clk signal and connect it to the features if the
         # feature supports it
-        clk_ports = []
+        clk_ports = set()
         for feature in self.features():
             if "clk" in feature.ports.keys():
-                clk_ports.append(feature.ports.clk)
+                clk_ports.add(feature.ports.clk)
         # some core may not expose the port as features, such as mem cores
         if self.core is not None and "clk" in self.core.ports and \
                 self.core.ports.clk not in clk_ports:
-            clk_ports.append(self.core.ports.clk)
+            clk_ports.add(self.core.ports.clk)
 
         for clk_port in clk_ports:
             self.wire(self.ports.clk, clk_port)
