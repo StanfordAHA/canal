@@ -686,11 +686,14 @@ class TileCircuit(GemstoneGenerator):
                     if len(port_node.get_conn_in()) == 0:
                         continue
                     # create a CB
-                    port_ref = tile.get_port_ref(port_node.name)
+                    port_refs = tile.get_port_ref(port_node.name)
                     cb = CB(port_node, config_addr_width, config_data_width,
                             double_buffer=self.double_buffer,
                             ready_valid=self.ready_valid)
-                    self.wire(cb.ports.O, port_ref)
+                    if not isinstance(port_refs, list):
+                        port_refs = [port_refs]
+                    for p in port_refs:
+                        self.wire(cb.ports.O, p)
                     self.cbs[port_name] = cb
 
                     # if the input is combinational, wire constant
