@@ -172,12 +172,14 @@ class SB(InterconnectConfigurable):
                  config_data_width: int, core_name: str = "",
                  stall_signal_width: int = 4,
                  double_buffer: bool = False,
-                 ready_valid: bool = False):
+                 ready_valid: bool = False,
+                 combinational_ports=None):
         self.finalized = False
         self.ready_valid = ready_valid
         self.switchbox = switchbox
         self.__core_name = core_name
         self.stall_signal_width = stall_signal_width
+        self.combinational_ports = combinational_ports if combinational_ports is not None else {}
 
         self.sb_muxs: Dict[str, Tuple[SwitchBoxNode, AOIMuxWrapper]] = {}
         self.reg_muxs: Dict[str, Tuple[RegisterMuxNode, MuxWrapper]] = {}
@@ -493,19 +495,25 @@ class SB(InterconnectConfigurable):
                 assert len(n) == 0
                 # this is a port input, i.e. CB
                 # we assume it's properly connected from outside
-                ready = n.name + "_ready"
-                sel = n.name + "_out_sel"
-                if ready not in self.ports:
-                    self.add_port(ready, magma.BitIn)
-                    num_in = int(
-                        math.pow(2, kratos.clog2(len(n.get_conn_in()))))
-                    self.add_port(sel, magma.In(magma.Bits[num_in]))
-                self.wire(fanout.ports[f"I{idx}"][0], self.ports[ready])
-                self.wire(fanout.ports[f"S{idx}"], self.ports[sel])
-                enable = n.name + "_enable"
-                if enable not in self.ports:
-                    self.add_port(enable, magma.In(magma.Bits[1]))
-                en = self.ports[enable]
+                if n.name in self.combinational_ports:
+                    # this is a combinational port
+                    en = Const(magma.Bits[1](0))
+                    self.wire(fanout.ports[f"I{idx}"][0], Const(magma.Bit(0)))
+                    self.wire(fanout.ports[f"S{idx}"], Const(0))
+                else:
+                    ready = n.name + "_ready"
+                    sel = n.name + "_out_sel"
+                    if ready not in self.ports:
+                        self.add_port(ready, magma.BitIn)
+                        num_in = int(
+                            math.pow(2, kratos.clog2(len(n.get_conn_in()))))
+                        self.add_port(sel, magma.In(magma.Bits[num_in]))
+                    self.wire(fanout.ports[f"I{idx}"][0], self.ports[ready])
+                    self.wire(fanout.ports[f"S{idx}"], self.ports[sel])
+                    enable = n.name + "_enable"
+                    if enable not in self.ports:
+                        self.add_port(enable, magma.In(magma.Bits[1]))
+                    en = self.ports[enable]
             else:
                 assert isinstance(n, SwitchBoxNode)
                 sb: SwitchBoxNode = n
@@ -711,7 +719,8 @@ class TileCircuit(GemstoneGenerator):
             sb = SB(tile.switchbox, config_addr_width, config_data_width,
                     core_name, stall_signal_width=stall_signal_width,
                     double_buffer=self.double_buffer,
-                    ready_valid=self.ready_valid)
+                    ready_valid=self.ready_valid,
+                    combinational_ports=self.combinational_ports)
             self.sbs[sb.switchbox.width] = sb
 
         # lift all the sb ports up
@@ -780,9 +789,8 @@ class TileCircuit(GemstoneGenerator):
                     self.wire(tile.get_port_ref(node.name), cb.ports.I[idx])
                     if self.ready_valid:
                         node_valid = node.name + "_valid"
-                        self.wire(tile.get_port_ref(node_valid, node.name), cb.ports.valid_in[idx])
-                    #    node_ready = node.name + "_ready"
-                    #    self.wire(tile.get_port_ref(node_ready, node.name), cb.ports.ready_out)
+                        p = tile.get_port_ref(node_valid, node.name)
+                        self.wire(p[0], cb.ports.valid_in[idx])
 
         # connect ports from core to switch box
         for bit_width, tile in self.tiles.items():
@@ -845,7 +853,7 @@ class TileCircuit(GemstoneGenerator):
                 for _, port_node in tile.ports.items():
                     if len(port_node) != 0 or port_node.name not in self.cbs:
                         continue
-                    if port_name in self.combinational_ports:
+                    if port_node.name in self.combinational_ports:
                         continue
                     cb = self.cbs[port_node.name]
                     out_sel = port_node.name + "_out_sel"
