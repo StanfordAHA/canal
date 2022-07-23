@@ -300,7 +300,7 @@ class SB(InterconnectConfigurable):
 
             # for ready valid, we need 1-bit config to know whether
             # the mux is being used or not
-            if self.ready_valid and len(sb.get_conn_in()) > 0:
+            if self.ready_valid:
                 self.add_config(sb_name + "_enable", 1)
 
     def __create_reg_mux(self):
