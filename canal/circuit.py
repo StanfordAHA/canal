@@ -848,7 +848,9 @@ class TileCircuit(GemstoneGenerator):
         self.__add_tile_id()
         # add ports
         self.add_ports(stall=magma.In(magma.Bits[stall_signal_width]),
-                       reset=magma.In(magma.AsyncReset))
+                       reset=magma.In(magma.AsyncReset),
+                       clk=magma.In(magma.Clock),
+        )
 
         # lift ports if there is empty sb
         self.__lift_ports()
@@ -912,31 +914,46 @@ class TileCircuit(GemstoneGenerator):
     def __add_stall(self):
         # automatically add stall signal and connect it to the features if the
         # feature supports it
-        stall_ports = []
+        stall_ports = set()
         for feature in self.features():
             if "stall" in feature.ports.keys():
-                stall_ports.append(feature.ports.stall)
+                stall_ports.add(feature.ports.stall)
         # some core may not expose the port as features, such as mem cores
         if self.core is not None and "stall" in self.core.ports and \
                 self.core.ports.stall not in stall_ports:
-            stall_ports.append(self.core.ports.stall)
+            stall_ports.add(self.core.ports.stall)
         for stall_port in stall_ports:
             self.wire(self.ports.stall, stall_port)
 
     def __add_reset(self):
         # automatically add reset signal and connect it to the features if the
         # feature supports it
-        reset_ports = []
+        reset_ports = set()
         for feature in self.features():
             if "reset" in feature.ports.keys():
-                reset_ports.append(feature.ports.reset)
+                reset_ports.add(feature.ports.reset)
         # some core may not expose the port as features, such as mem cores
         if self.core is not None and "reset" in self.core.ports and \
                 self.core.ports.reset not in reset_ports:
-            reset_ports.append(self.core.ports.reset)
+            reset_ports.add(self.core.ports.reset)
 
         for reset_port in reset_ports:
             self.wire(self.ports.reset, reset_port)
+
+    def __add_clk(self):
+        # automatically add clk signal and connect it to the features if the
+        # feature supports it
+        clk_ports = set()
+        for feature in self.features():
+            if "clk" in feature.ports.keys():
+                clk_ports.add(feature.ports.clk)
+        # some core may not expose the port as features, such as mem cores
+        if self.core is not None and "clk" in self.core.ports and \
+                self.core.ports.clk not in clk_ports:
+            clk_ports.add(self.core.ports.clk)
+
+        for clk_port in clk_ports:
+            self.wire(self.ports.clk, clk_port)
 
     def __should_add_config(self):
         # a introspection on itself to determine whether to add config
@@ -944,12 +961,6 @@ class TileCircuit(GemstoneGenerator):
         for feature in self.features():
             if "config" in feature.ports:
                 return True
-            else:
-                # if the feature doesn't have config port, it shouldn't have
-                # reset either, although the other way around may be true
-                # that is, a feature may have some internal states that need
-                # to reset, but not necessarily has config port
-                assert "reset" not in feature.ports
         return False
 
     def wire_internal(self, port1: str, port2: str):
@@ -982,6 +993,8 @@ class TileCircuit(GemstoneGenerator):
         # add stall and reset signal
         self.__add_stall()
         self.__add_reset()
+        self.__add_clk()
+
 
         # see if we really need to add config or not
         if not self.__should_add_config():
@@ -990,7 +1003,6 @@ class TileCircuit(GemstoneGenerator):
         self.add_ports(
             config=magma.In(ConfigurationType(self.full_config_addr_width,
                                               self.config_data_width)),
-            clk=magma.In(magma.Clock),
             read_config_data=magma.Out(magma.Bits[self.config_data_width])
         )
         # double buffer ports
