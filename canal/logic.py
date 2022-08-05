@@ -251,6 +251,69 @@ class RegFIFO(Generator):
             self._num_items = self._num_items - 1
 
 
+class SplitFifo(Generator):
+    def __init__(self, width):
+        super(SplitFifo, self).__init__(f"SplitFifo_{width}", debug=True)
+        self.width = width
+        clk = self.clock("clk")
+        rst = self.reset("rst")
+
+        data_in = self.input("data_in", width)
+        data_out = self.output("data_out", width)
+
+        valid0 = self.input("valid0", 1)
+        ready0 = self.output("ready0", 1)
+
+        ready1 = self.input("ready1", 1)
+        valid1 = self.output("valid1", 1)
+
+        value = self.var("value", width)
+        empty_n = self.var("empty_n", 1)
+        empty = self.var("empty", 1)
+        self.wire(empty, ~empty_n)
+
+        ready_in = self.var("ready_in", 1)
+        valid_in = self.var("valid_in", 1)
+
+        # control logic
+        start_fifo = self.input("start_fifo", 1)
+        end_fifo = self.input("end_fifo", 1)
+        fifo_en = self.input("fifo_en", 1)
+
+        # need to add clock enables
+        self.clock_en("clk_en")
+
+        self.wire(ready_in, ready1.and_(~start_fifo))
+        self.wire(ready0, empty.or_(ready_in))
+        self.wire(valid_in, valid0.and_(~end_fifo))
+        self.wire(valid1, (~empty).or_(valid_in))
+
+        self.wire(data_out, kratos.ternary(empty.and_(fifo_en), data_in, value))
+
+        @always_ff((posedge, clk), (posedge, rst))
+        def value_logic():
+            if rst:
+                value = 0
+            else:
+                if (~fifo_en).or_(valid0.and_(ready0).and_(~(empty.and_(ready1).and_(valid1)))):
+                    value = data_in
+
+        @always_ff((posedge, clk), (posedge, rst))
+        def empty_logic():
+            if rst:
+                empty_n = 0
+            else:
+                if fifo_en:
+                    if valid1.and_(ready1):
+                        if ~(valid0.and_(ready0)):
+                            empty_n = 0
+                    elif valid0.and_(ready0):
+                        empty_n = 1
+
+        self.add_always(value_logic)
+        self.add_always(empty_logic)
+
+
 class FifoRegWrapper(GemstoneGenerator):
     __cache = {}
 
@@ -259,7 +322,7 @@ class FifoRegWrapper(GemstoneGenerator):
         self.width = width
 
         if width not in FifoRegWrapper.__cache:
-            gen = RegFIFO(width, 1, depth=2)
+            gen = SplitFifo(width)
             _kratos.passes.auto_insert_clock_enable(gen.internal_generator)
             circuit = kratos.util.to_magma(gen)
             FifoRegWrapper.__cache[width] = circuit
@@ -277,7 +340,9 @@ class FifoRegWrapper(GemstoneGenerator):
             valid_out=magma.Out(magma.Bit),
             ready_in=magma.In(magma.Bit),
             ready_out=magma.Out(magma.Bit),
-            fifo_en=magma.In(magma.Bit)
+            fifo_en=magma.In(magma.Bit),
+            start=magma.In(magma.Bit),
+            end=magma.In(magma.Bit)
         )
 
         self.wire(self.ports.I, self.__circuit.ports.data_in)
@@ -285,21 +350,15 @@ class FifoRegWrapper(GemstoneGenerator):
         self.wire(self.ports.clk, self.__circuit.ports.clk)
         self.wire(self.ports.CE, self.__circuit.ports.clk_en[0])
         self.wire(self.ports.fifo_en, self.__circuit.ports.fifo_en[0])
-        # need an inverter for async reset
-        async_inverter = FromMagma(mantle.Not)
-        async_inverter.instance_name = "async_inverter"
         self.wire(self.ports.ASYNCRESET,
-                  self.convert(async_inverter.ports.I, magma.asyncreset))
-        self.wire(self.convert(async_inverter.ports.O, magma.asyncreset),
-                  self.__circuit.ports.rst_n)
-        self.wire(self.ports.valid_in, self.__circuit.ports.push[0])
-        self.wire(self.ports.valid_out, self.__circuit.ports.valid[0])
-        self.wire(self.ports.ready_in, self.__circuit.ports["pop"][0])
-        # invert full
-        full_inverter = FromMagma(mantle.Not)
-        full_inverter.instance_name = "full_inverter"
-        self.wire(full_inverter.ports.I, self.__circuit.ports.full[0])
-        self.wire(self.ports.ready_out, full_inverter.ports.O)
+                  self.__circuit.ports.rst)
+        self.wire(self.ports.valid_in, self.__circuit.ports.valid0[0])
+        self.wire(self.ports.valid_out, self.__circuit.ports.valid1[0])
+        self.wire(self.ports.ready_in, self.__circuit.ports.ready1[0])
+        self.wire(self.ports.ready_out, self.__circuit.ports.ready0[0])
+
+        self.wire(self.ports.start, self.__circuit.ports.start_fifo[0])
+        self.wire(self.ports.end, self.__circuit.ports.end_fifo[0])
 
     def name(self):
         return f"FifoRegWrapper_{self.width}"
@@ -409,3 +468,8 @@ class ReadyValidLoopBack(Generator):
         circuit = ReadyValidLoopBack.__cache
         return FromMagma(circuit)
 
+
+if __name__ == "__main__":
+    mod = SplitFifo(16)
+    _kratos.passes.auto_insert_clock_enable(mod.internal_generator)
+    kratos.verilog(mod, filename="split_fifo.sv")
