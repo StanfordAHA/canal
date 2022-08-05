@@ -341,8 +341,8 @@ class FifoRegWrapper(GemstoneGenerator):
             ready_in=magma.In(magma.Bit),
             ready_out=magma.Out(magma.Bit),
             fifo_en=magma.In(magma.Bit),
-            start=magma.In(magma.Bit),
-            end=magma.In(magma.Bit)
+            start_fifo=magma.In(magma.Bit),
+            end_fifo=magma.In(magma.Bit)
         )
 
         self.wire(self.ports.I, self.__circuit.ports.data_in)
@@ -357,8 +357,8 @@ class FifoRegWrapper(GemstoneGenerator):
         self.wire(self.ports.ready_in, self.__circuit.ports.ready1[0])
         self.wire(self.ports.ready_out, self.__circuit.ports.ready0[0])
 
-        self.wire(self.ports.start, self.__circuit.ports.start_fifo[0])
-        self.wire(self.ports.end, self.__circuit.ports.end_fifo[0])
+        self.wire(self.ports.start_fifo, self.__circuit.ports.start_fifo[0])
+        self.wire(self.ports.end_fifo, self.__circuit.ports.end_fifo[0])
 
     def name(self):
         return f"FifoRegWrapper_{self.width}"
