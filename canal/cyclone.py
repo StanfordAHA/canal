@@ -453,7 +453,7 @@ class Tile:
         # hold for the core
         self.core: InterconnectCore = None
         self.additional_cores = []
-        self.__port_core: Dict[str, InterconnectCore] = {}
+        self.__port_core: Dict[str, List[InterconnectCore]] = {}
 
     def __eq__(self, other):
         if not isinstance(other, Tile):
@@ -489,7 +489,9 @@ class Tile:
                     # create node
                     self.ports[port_name] = PortNode(port_name, self.x,
                                                      self.y, width)
-                    self.__port_core[port_name] = core
+                    if port_name not in self.__port_core:
+                        self.__port_core[port_name] = []
+                    self.__port_core[port_name].append(core)
 
         if connection_type & CoreConnectionType.SB == CoreConnectionType.SB:
             outputs = core.outputs()[:]
@@ -500,7 +502,9 @@ class Tile:
                     # create node
                     self.ports[port_name] = PortNode(port_name, self.x,
                                                      self.y, width)
-                    self.__port_core[port_name] = core
+                    if port_name not in self.__port_core:
+                        self.__port_core[port_name] = []
+                    self.__port_core[port_name].append(core)
 
     def add_additional_core(self, core: InterconnectCore,
                             connection_type: CoreConnectionType):
@@ -526,11 +530,19 @@ class Tile:
                         self.ports[port_name] = PortNode(port_name, self.x,
                                                          self.y, width)
                         self.ports[port_name].add_edge(cb_node)
-                    self.__port_core[port_name] = core
+                    if port_name not in self.__port_core:
+                        self.__port_core[port_name] = []
+                    self.__port_core[port_name].append(core)
 
-    def get_port_ref(self, port_name):
-        assert port_name in self.__port_core
-        return self.__port_core[port_name].get_port_ref(port_name)
+    def get_port_ref(self, port_name, core_port_name=None, search_all=False):
+        if core_port_name is None:
+            core_port_name = port_name
+        assert core_port_name in self.__port_core
+        res = [c.get_port_ref(port_name) for c in self.__port_core[core_port_name]]
+        if len(res) == 1:
+            return res[0]
+        else:
+            return res
 
     def get_port(self, port_name):
         return self.ports.get(port_name, None)
