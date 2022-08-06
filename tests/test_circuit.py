@@ -280,7 +280,8 @@ def test_sb_ready_valid():
                    sb_circuit.get_config_data(str(node2) + "_enable", 1),
                    sb_circuit.get_config_data(str(node3) + "_enable", 1),
                    # enable fifo mode
-                   sb_circuit.get_config_data(str(node4) + "_fifo", 1)]
+                   sb_circuit.get_config_data(str(node4) + "_fifo", 1),
+                   sb_circuit.get_config_data(str(node4) + "_start", 1)]
     # also enable the mux that gets connected to
     config_data = compress_config_data(config_data)
 
@@ -316,8 +317,8 @@ def test_sb_ready_valid():
     tester.eval()
     tester.expect(circuit.interface.ports[output_node5], 42)
     tester.expect(circuit.interface.ports[output_node3], 43)
-    # should be ready
-    tester.expect(circuit.interface.ports[input_port_name + "_ready_out"], 1)
+    # should not be ready since the depth is 1, i.e. we're blocked
+    tester.expect(circuit.interface.ports[input_port_name + "_ready_out"], 0)
     # next cycle
     tester.step(2)
     # next output
@@ -915,4 +916,4 @@ def test_tile_ready_valid():
 
 
 if __name__ == "__main__":
-    test_tile_ready_valid()
+    test_sb_ready_valid()
