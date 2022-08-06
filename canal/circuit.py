@@ -1142,8 +1142,13 @@ class TileCircuit(GemstoneGenerator):
     __CONFIG_TYPE = Tuple[int, int, int]
     __BITSTREAM_TYPE = Union[__CONFIG_TYPE, List[__CONFIG_TYPE]]
 
-    def get_route_bitstream_config(self, src_node: Node, dst_node: Node,
-                                   ready_valid: bool = False) -> __BITSTREAM_TYPE:
+    def __add_additional_config(self, name, value, _circuit, configs):
+        _reg_idx, _config_data = _circuit.get_config_data(name, value)
+        _feature_addr = self.features().index(_circuit)
+        _additional_config = _reg_idx, _feature_addr, _config_data
+        configs.append(_additional_config)
+
+    def get_route_bitstream_config(self, src_node: Node, dst_node: Node) -> __BITSTREAM_TYPE:
         assert src_node.width == dst_node.width
         tile = self.tiles[src_node.width]
         assert dst_node.x == tile.x and dst_node.y == tile.y, \
@@ -1174,24 +1179,25 @@ class TileCircuit(GemstoneGenerator):
             elif isinstance(dst_node, PortNode):
                 circuit = self.cbs[dst_node.name]
 
-            def add_additional_config(name, value, _circuit):
-                _reg_idx, _config_data = _circuit.get_config_data(name, value)
-                _feature_addr = self.features().index(_circuit)
-                _additional_config = _reg_idx, _feature_addr, _config_data
-                configs.append(_additional_config)
-
             if circuit is not None:
-                add_additional_config(str(dst_node) + "_enable", 1, circuit)
+                self.__add_additional_config(str(dst_node) + "_enable", 1, circuit, configs)
 
-            if ready_valid:
-                # this means we have to turn on fifo mode
-                if isinstance(dst_node, RegisterMuxNode) and isinstance(src_node, RegisterNode):
-                    # we only turn this on if it's a path from register to mux with ready-valid
-                    circuit = self.sbs[src_node.width]
-                    reg_name = str(src_node) + "_fifo"
-                    add_additional_config(reg_name, 1, circuit)
             return configs
         return base_config
+
+    def configure_fifo(self, node: RegisterNode, start: bool, end: bool):
+        configs = []
+        # we only turn this on if it's a path from register to mux with ready-valid
+        circuit = self.sbs[node.width]
+        reg_name = str(node) + "_fifo"
+        self.__add_additional_config(reg_name, 1, circuit, configs)
+        start_name = str(node) + "_start"
+        end_name = str(node) + "_end"
+        start = int(start)
+        end = int(end)
+        self.__add_additional_config(start_name, start, circuit, configs)
+        self.__add_additional_config(end_name, end, circuit, configs)
+        return configs
 
     def __lift_ports(self):
         # lift the internal ports only if we have empty switch boxes
