@@ -471,7 +471,7 @@ class Interconnect(generator.Generator):
 
         return res
 
-    def __set_fifo_mode(self, node: RegisterNode, start: bool, end: bool):
+    def set_fifo_mode(self, node: RegisterNode, start: bool, end: bool):
         x, y = node.x, node.y
         tile = self.tile_circuits[(x, y)]
         config_data = tile.configure_fifo(node, start, end)
@@ -522,9 +522,9 @@ class Interconnect(generator.Generator):
                         assert len(reg_nodes) != 1, "Cannot have standalone FIFO reg in the segment"
                         first_node = reg_nodes[0]
                         last_node = reg_nodes[-1]
-                        config = self.__set_fifo_mode(first_node, True, False)
+                        config = self.set_fifo_mode(first_node, True, False)
                         result += config
-                        config = self.__set_fifo_mode(last_node, False, True)
+                        config = self.set_fifo_mode(last_node, False, True)
                         result += config
 
         return result

@@ -15,6 +15,8 @@ from util import copy_sv_files
 import pytest
 import filecmp
 import magma
+import queue
+import random
 
 
 def assert_tile_coordinate(tile: Tile, x: int, y: int):
@@ -498,5 +500,286 @@ def test_ready_valid_fifo():
                                flags=["-Wno-fatal"])
 
 
+def __route(src_node: Node, dst_node: None):
+    path_mapping = {}
+    visited = set()
+    q = queue.Queue()
+    q.put(src_node)
+
+    while not q.empty():
+        node = q.get()
+        if node in visited:
+            continue
+        visited.add(node)
+
+        if node == dst_node:
+            # found it
+            break
+
+        for n in node:
+            if n in visited or n in path_mapping:
+                continue
+            path_mapping[n] = node
+
+            q.put(n)
+
+    assert dst_node in path_mapping
+    path = [dst_node]
+    while path[-1] in path_mapping:
+        node = path[-1]
+        next_node = path_mapping[node]
+        path.append(next_node)
+
+    path = path[::-1]
+    assert path[0] == src_node
+    return path
+
+
+def insert_fifo(path, interconnect: Interconnect):
+    result = []
+    start: RegisterNode = RegisterNode("", 0, 0, 0, 0)
+    end: RegisterNode = RegisterNode("", 0, 0, 0, 0)
+    idx = 0
+    count = 0
+
+    for idx, node in enumerate(path):
+        if isinstance(node, RegisterMuxNode):
+            reg = interconnect.tile_circuits[(node.x, node.y)].sbs[node.width].switchbox.get_register(node.side,
+                                                                                                      node.track)
+            result.append(reg)
+            if count == 0:
+                start = reg
+            elif count == 1:
+                end = reg
+            count += 1
+        result.append(node)
+        if count == 2:
+            idx += 1
+            break
+
+    return (start, end), result, path[idx:]
+
+
+class RefValue:
+    def __init__(self, value):
+        self.value = value
+
+    def __bool__(self):
+        return bool(self.value)
+
+    def __int__(self):
+        return int(self.value)
+
+
+class SingleFifo:
+    def __init__(self, id_, capacity, ready_in: RefValue, valid_in: RefValue):
+        self.id_ = id_
+        self.capacity = capacity
+        self.fifo = []
+        self.ready_out = RefValue(True)
+        self.valid_out = RefValue(False)
+        self.ready_in = ready_in
+        self.valid_in = valid_in
+        self.in_ = RefValue(0)
+        self.out = RefValue(0)
+
+    def __len__(self):
+        return len(self.fifo)
+
+    def eval(self):
+        if self.valid_in:
+            if len(self) < self.capacity:
+                self.fifo.append(self.in_.value)
+            self.out.value = self.fifo[0]
+            if self.ready_in:
+                self.fifo = self.fifo[1:]
+            self.valid_out.value = True
+        else:
+            if len(self.fifo) > 0:
+                self.out.value = self.fifo[0]
+                self.valid_out.value = True
+                if self.ready_in.value:
+                    self.fifo = self.fifo[1:]
+            else:
+                self.valid_out.value = False
+
+        self.ready_out.value = len(self.fifo) < self.capacity
+
+
+class FifoModel:
+    def __init__(self, num_fifo, capacity=2):
+        self.valid_in = RefValue(True)
+        self.ready_in = RefValue(True)
+        self.in_ = RefValue(0)
+        self.fifos = []
+        for i in range(num_fifo):
+            ref = RefValue(0)
+            self.fifos.append(SingleFifo(i, capacity, ref, ref))
+        # fix connections
+        self.fifos[-1].ready_in = self.ready_in
+        self.fifos[0].valid_in = self.valid_in
+        self.fifos[0].in_ = self.in_
+
+        for i in range(num_fifo - 1):
+            pre_fifo = self.fifos[i]
+            next_fifo = self.fifos[i + 1]
+            pre_fifo.out = next_fifo.in_
+            pre_fifo.valid_out = next_fifo.valid_in
+            pre_fifo.ready_in = next_fifo.ready_out
+
+        # registered out
+        self.out = self.fifos[-1].out
+        self.ready_out = self.fifos[0].ready_out
+        self.valid_out = self.fifos[-1].valid_out
+
+    def eval(self):
+        print("RI:", bool(self.ready_in.value), "VI", bool(self.valid_in.value),
+              "Value", self.in_.value)
+        for fifo in self.fifos[::-1]:
+            fifo.eval()
+
+
+def test_fifo_model():
+    fifo = FifoModel(2)
+    ri = fifo.ready_in
+    vi = fifo.valid_in
+    in_ = fifo.in_
+
+    ri.value = True
+    vi.value = False
+    in_.value = 72
+    fifo.eval()
+    in_.value = 48
+    fifo.eval()
+    ri.value = False
+    vi.value = True
+    in_.value = 37
+    fifo.eval()
+    assert not fifo.valid_out.value
+    in_.value = 22
+    fifo.eval()
+    assert fifo.valid_out.value
+    assert fifo.out.value == 37
+    in_.value = 78
+    fifo.eval()
+
+    in_.value = 28
+    vi.value = False
+    fifo.eval()
+
+    ri.value = True
+    in_.value = 97
+    fifo.eval()
+    assert fifo.valid_out.value
+    assert fifo.out.value == 37
+
+    in_.value = 55
+    fifo.eval()
+    assert fifo.valid_out.value
+    assert fifo.out.value == 22
+
+    in_.value = 36
+    fifo.eval()
+    assert fifo.valid_out.value
+    assert fifo.out.value == 78
+
+    in_.value = 76
+    vi.value = True
+    ri.value = False
+    fifo.eval()
+    assert not fifo.valid_out.value
+
+
+def test_ready_valid_randomized():
+    chip_size = 4
+    _, _, _, interconnect = create_dummy_cgra(chip_size,
+                                              2,
+                                              True,
+                                              GlobalSignalWiring.Fanout,
+                                              ready_valid=True)
+
+    rnd = random.Random(0)
+    start_x = rnd.randint(0, chip_size)
+    start_y = 0
+    end_x = rnd.randint(0, chip_size)
+    end_y = chip_size - 1
+    src_node = interconnect.tile_circuits[(start_x,
+                                           start_y)].sbs[16].switchbox.get_sb(SwitchBoxSide.NORTH, 0,
+                                                                              SwitchBoxIO.SB_IN)
+    dst_node = interconnect.tile_circuits[(end_x,
+                                           end_y)].sbs[16].switchbox.get_reg_mux(SwitchBoxSide.SOUTH, 0)
+
+    path = __route(src_node, dst_node)
+    final_path = []
+    fifo = []
+    for i in range(chip_size // 2):
+        f, r, path = insert_fifo(path, interconnect)
+        fifo.append(f)
+        final_path += r
+    config_data = interconnect.get_route_bitstream({"e1": [final_path]}, use_fifo=True)
+    config_data += interconnect.set_fifo_mode(fifo[0][-1], False, True)
+    config_data += interconnect.set_fifo_mode(fifo[1][0], True, False)
+
+    dst_node = interconnect.tile_circuits[(end_x,
+                                           end_y)].sbs[16].switchbox.get_sb(SwitchBoxSide.SOUTH, 0, SwitchBoxIO.SB_OUT)
+
+    src_name = str(src_node) + "_X{0:X}_Y{1:X}".format(src_node.x, src_node.y)
+    dst_name = str(dst_node) + "_X{0:X}_Y{1:X}".format(dst_node.x, dst_node.y)
+
+    print("Input", src_name)
+    print("Output", dst_name)
+
+    config_data = compress_config_data(config_data)
+    circuit = interconnect.circuit()
+    tester = BasicTester(circuit, circuit.clk, circuit.reset)
+
+    tester.reset()
+
+    for addr, data in config_data:
+        tester.configure(addr, data)
+
+    ready_in = dst_name + "_ready"
+    ready_out = src_name + "_ready"
+    valid_in = src_name + "_valid"
+    valid_out = dst_name + "_valid"
+
+    model = FifoModel(chip_size // 2)
+
+    values = []
+    for i in range(10):
+        ri = int(rnd.random() < 0.5)
+        vi = int(rnd.random() < 0.5)
+        tester.poke(circuit.interface[ready_in], ri)
+        tester.poke(circuit.interface[valid_in], vi)
+        model.ready_in.value = ri
+        model.valid_in.value = vi
+
+        tester.eval()
+        value = rnd.randrange(10, 100)
+        tester.poke(circuit.interface[src_name], value)
+        model.in_.value = value
+        tester.eval()
+        model.eval()
+
+        tester.step(2)
+
+        valid = int(model.valid_out.value)
+        ready = int(model.ready_in.value)
+        tester.expect(circuit.interface[valid_out], valid)
+        if valid:
+            value = model.out.value
+            values.append(value)
+            tester.expect(circuit.interface[dst_name], value)
+
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        tempdir = "tempdir"
+        copy_sv_files(tempdir)
+        tester.compile_and_run(target="verilator",
+                               magma_output="coreir-verilog",
+                               directory=tempdir,
+                               flags=["-Wno-fatal", "--trace"])
+
+
 if __name__ == "__main__":
-    test_ready_valid_fifo()
+    test_ready_valid_randomized()
