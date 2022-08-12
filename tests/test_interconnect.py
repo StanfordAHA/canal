@@ -607,36 +607,43 @@ class SingleFifo:
 
 
 class FifoModel:
-    def __init__(self, num_fifo, capacity=2):
+    def __init__(self, capacity=2):
         self.valid_in = RefValue(True)
         self.ready_in = RefValue(True)
+        self.valid_out = RefValue(True)
+        self.ready_out = RefValue(True)
+        self.capacity = capacity
+        self.fifo1 = []
+        self.fifo2 = []
+        self.reg = None
         self.in_ = RefValue(0)
-        self.fifos = []
-        for i in range(num_fifo):
-            ref = RefValue(0)
-            self.fifos.append(SingleFifo(i, capacity, ref, ref))
-        # fix connections
-        self.fifos[-1].ready_in = self.ready_in
-        self.fifos[0].valid_in = self.valid_in
-        self.fifos[0].in_ = self.in_
-
-        for i in range(num_fifo - 1):
-            pre_fifo = self.fifos[i]
-            next_fifo = self.fifos[i + 1]
-            pre_fifo.out = next_fifo.in_
-            pre_fifo.valid_out = next_fifo.valid_in
-            pre_fifo.ready_in = next_fifo.ready_out
-
-        # registered out
-        self.out = self.fifos[-1].out
-        self.ready_out = self.fifos[0].ready_out
-        self.valid_out = self.fifos[-1].valid_out
+        self.out = RefValue(0)
 
     def eval(self):
+
+        self.valid_out.value = len(self.fifo2) > 0
+        self.ready_out.value = len(self.fifo1) < self.capacity
+        if len(self.fifo2) > 0:
+            self.out.value = self.fifo2[0]
+        if self.valid_in:
+            if len(self.fifo1) < self.capacity:
+                self.fifo1.append(self.in_.value)
+        if self.ready_in:
+            if len(self.fifo2) > 0:
+                self.fifo2 = self.fifo2[1:]
+        if len(self.fifo2) < self.capacity:
+            if len(self.fifo1) > 0:
+                if self.valid_in:
+                    if len(self.fifo1) > 1:
+                        self.fifo2.append(self.fifo1[0])
+                        self.fifo1 = self.fifo1[1:]
+                else:
+                    if len(self.fifo1) > 1:
+                        self.fifo2.append(self.fifo1[0])
+                        self.fifo1 = self.fifo1[1:]
+
         print("RI:", bool(self.ready_in.value), "VI", bool(self.valid_in.value),
-              "Value", self.in_.value)
-        for fifo in self.fifos[::-1]:
-            fifo.eval()
+              "Value", self.in_.value, "VO", self.valid_out.value)
 
 
 def test_fifo_model():
@@ -770,7 +777,7 @@ def test_ready_valid_randomized():
             value = model.out.value
             values.append(value)
             tester.expect(circuit.interface[dst_name], value)
-
+    print(values)
 
     with tempfile.TemporaryDirectory() as tempdir:
         tempdir = "tempdir"
