@@ -58,7 +58,7 @@ def create_uniform_interconnect(width: int,
                                 List[Tuple[int, SwitchBoxSide]] = None,
                                 io_sides: IOSide = IOSide.None_,
                                 io_conn: Dict[str, Dict[str, List[int]]] = None,
-                                additional_core_fn: Callable[[int, int], Core] = lambda _, __: None,
+                                additional_cores_fn: Callable[[int, int], List[Core]] = lambda _, __: None,
                                 inter_core_connection: Dict[str, List[str]] = None
                                 ) -> InterconnectGraph:
     """Create a uniform interconnect with column-based design. We will use
@@ -118,11 +118,12 @@ def create_uniform_interconnect(width: int,
             core_interface = CoreInterface(core)
             interconnect.set_core(x, y, core_interface)
 
-            additional_core = additional_core_fn(x, y)
-            if additional_core is not None:
-                additional_core_interface = CoreInterface(additional_core)
-                tile_circuit.add_additional_core(additional_core_interface,
-                                                 CoreConnectionType.SB | CoreConnectionType.CB)
+            additional_cores = additional_cores_fn(x, y)
+            if additional_cores is not None:
+                for additional_core in additional_cores:
+                    additional_core_interface = CoreInterface(additional_core)
+                    tile_circuit.add_additional_core(additional_core_interface,
+                                                    CoreConnectionType.SB | CoreConnectionType.CB)
 
     # create tiles without SB
     for x in range(width):
