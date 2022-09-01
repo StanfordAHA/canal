@@ -301,7 +301,10 @@ class SB(InterconnectConfigurable):
             # for ready valid, we need 1-bit config to know whether
             # the mux is being used or not
             if self.ready_valid:
-                self.add_config(sb_name + "_enable", 1)
+                enable_name = sb_name + "_enable"
+                self.add_config(enable_name, 1)
+                p = self.add_port(enable_name, magma.BitIn)
+                self.wire(self.registers[enable_name], p)
 
     def __create_reg_mux(self):
         for _, reg_mux in self.switchbox.reg_muxs.items():
