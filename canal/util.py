@@ -146,9 +146,7 @@ def create_uniform_interconnect(width: int,
         interconnect.set_core_connection_all(port_name, conns)
 
     if inter_core_connection is not None:
-        for from_name, to_names in inter_core_connection.items():
-            for to_name in to_names:
-                interconnect.set_inter_core_connection(from_name, to_name)
+        interconnect.set_inter_core_connection(inter_core_connection)
 
     # set the actual interconnections
     # sort the tracks by length
