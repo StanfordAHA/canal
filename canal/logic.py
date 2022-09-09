@@ -284,9 +284,9 @@ class SplitFifo(Generator):
         self.clock_en("clk_en")
 
         self.wire(ready_in, ready1.and_(~start_fifo))
-        self.wire(ready0, kratos.ternary(fifo_en, empty.or_(ready_in), 0))
+        self.wire(ready0, kratos.ternary(fifo_en, empty.or_(ready_in), 1))
         self.wire(valid_in, valid0.and_(~end_fifo))
-        self.wire(valid1, kratos.ternary(fifo_en, (~empty).or_(valid_in), 0))
+        self.wire(valid1, kratos.ternary(fifo_en, (~empty).or_(valid_in), 1))
 
         self.wire(data_out, kratos.ternary(empty.and_(fifo_en), data_in, value))
 
