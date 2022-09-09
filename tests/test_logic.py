@@ -15,6 +15,7 @@ def test_reg_fifo():
     tester.poke(circuit.CE, 1)
     # enable fifo mode
     tester.poke(circuit.fifo_en, 1)
+    tester.eval()
 
     tester.expect(circuit.ready_out, 1)
     # push in data
@@ -35,7 +36,7 @@ def test_reg_fifo():
         tester.compile_and_run(target="verilator",
                                magma_output="coreir-verilog",
                                directory=tempdir,
-                               flags=["-Wno-fatal"])
+                               flags=["-Wno-fatal", "--trace"])
 
 
 def test_reg_fifo_sr():
