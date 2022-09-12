@@ -2,7 +2,7 @@ import magma
 from ordered_set import OrderedSet
 import os
 from .cyclone import InterconnectGraph, SwitchBoxSide, Node, PortNode
-from .cyclone import Tile, SwitchBoxNode, SwitchBoxIO, RegisterMuxNode
+from .cyclone import Tile, SwitchBoxNode, SwitchBoxIO, RegisterMuxNode, RegisterNode
 from typing import Dict, Tuple, List
 import gemstone.generator.generator as generator
 from .circuit import TileCircuit, create_name
@@ -248,11 +248,21 @@ class Interconnect(generator.Generator):
                             p = self.add_port(ready_name, magma.In(magma.Bit))
                             self.wire(p, tile.ports[sb_name + "_ready"])
                             self.__interface[ready_name] = sb_port
+
+                            valid_name = new_sb_name + "_valid"
+                            p = self.add_port(valid_name, magma.Out(magma.Bit))
+                            self.wire(p, tile.ports[sb_name + "_valid"])
+                            self.__interface[valid_name] = sb_port
                         else:
                             valid_name = new_sb_name + "_valid"
                             p = self.add_port(valid_name, magma.BitIn)
                             self.wire(p, tile.ports[sb_name + "_valid"])
                             self.__interface[valid_name] = sb_port
+
+                            ready_name = new_sb_name + "_ready"
+                            p = self.add_port(ready_name, magma.Out(magma.Bit))
+                            self.wire(p, tile.ports[sb_name + "_ready"])
+                            self.__interface[ready_name] = sb_port
 
     def __connect_margin_tiles(self):
         # connect these margin tiles
@@ -441,12 +451,12 @@ class Interconnect(generator.Generator):
         for _, tile in self.tile_circuits.items():
             tile.finalize()
 
-    def get_node_bitstream_config(self, src_node: Node, dst_node: Node, ready_valid: bool = False):
+    def get_node_bitstream_config(self, src_node: Node, dst_node: Node):
         # this is the complete one which includes the tile_id
         x, y = dst_node.x, dst_node.y
         tile = self.tile_circuits[(x, y)]
         res = []
-        configs = tile.get_route_bitstream_config(src_node, dst_node, ready_valid=ready_valid)
+        configs = tile.get_route_bitstream_config(src_node, dst_node)
 
         def add_config(entry):
             reg_addr, feat_addr, data = entry
@@ -461,7 +471,18 @@ class Interconnect(generator.Generator):
 
         return res
 
-    def get_route_bitstream(self, routes: Dict[str, List[List[Node]]], ready_valid: bool = False):
+    def __set_fifo_mode(self, node: RegisterNode, start: bool, end: bool):
+        x, y = node.x, node.y
+        tile = self.tile_circuits[(x, y)]
+        config_data = tile.configure_fifo(node, start, end)
+        res = []
+        for reg_addr, feat_addr, data in config_data:
+            addr = self.get_config_addr(reg_addr, feat_addr, x, y)
+            res.append((addr, data))
+
+        return res
+
+    def get_route_bitstream(self, routes: Dict[str, List[List[Node]]], use_fifo: bool = False):
         result = []
         for _, route in routes.items():
             for segment in route:
@@ -478,11 +499,34 @@ class Interconnect(generator.Generator):
                     if len(next_node.get_conn_in()) == 1:
                         # no mux created. skip
                         continue
-                    configs = self.get_node_bitstream_config(pre_node,
-                                                             next_node,
-                                                             ready_valid=ready_valid)
+                    configs = self.get_node_bitstream_config(pre_node, next_node,)
                     for addr, data in configs:
                         result.append((addr, data))
+                if use_fifo and len(segment) >= 4:
+                    reg_nodes = []
+                    idx = 0
+                    while idx < (len(segment) - 4):
+                        pre_node = segment[idx]
+                        if isinstance(pre_node, RegisterNode):
+                            if pre_node not in reg_nodes:
+                                reg_nodes.append(pre_node)
+                            # reg -> rmux -> sb -> sb -> reg
+                            next_idx = idx + 4
+                            next_node = segment[next_idx]
+                            if isinstance(next_node, RegisterNode):
+                                if next_node not in reg_nodes:
+                                    reg_nodes.append(next_node)
+                                idx += 4
+                        idx += 1
+                    if len(reg_nodes) != 0:
+                        assert len(reg_nodes) != 1, "Cannot have standalone FIFO reg in the segment"
+                        first_node = reg_nodes[0]
+                        last_node = reg_nodes[-1]
+                        config = self.__set_fifo_mode(first_node, True, False)
+                        result += config
+                        config = self.__set_fifo_mode(last_node, False, True)
+                        result += config
+
         return result
 
     def configure_placement(self, x: int, y: int, instr, pnr_tag=None):

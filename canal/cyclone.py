@@ -1046,24 +1046,24 @@ class SwitchBoxHelper:
                            track, SwitchBoxSide.SOUTH))
             # t_0, t_1
             result.append((track, SwitchBoxSide.WEST,
-                           mod(w - track, w), SwitchBoxSide.SOUTH))
-            result.append((mod(w - track, w), SwitchBoxSide.SOUTH,
+                           mod(w - track, w), SwitchBoxSide.NORTH))
+            result.append((mod(w - track, w), SwitchBoxSide.NORTH,
                            track, SwitchBoxSide.WEST))
             # t_1, t_2
-            result.append((track, SwitchBoxSide.SOUTH,
+            result.append((track, SwitchBoxSide.NORTH,
                            mod(track + 1, w), SwitchBoxSide.EAST))
             result.append((mod(track + 1, w), SwitchBoxSide.EAST,
-                           track, SwitchBoxSide.SOUTH))
+                           track, SwitchBoxSide.NORTH))
             # t_2, t_3
             result.append((track, SwitchBoxSide.EAST,
-                           mod(2 * w - 2 - track, w), SwitchBoxSide.NORTH))
-            result.append((mod(2 * w - 2 - track, w), SwitchBoxSide.NORTH,
+                           mod(2 * w - 2 - track, w), SwitchBoxSide.SOUTH))
+            result.append((mod(2 * w - 2 - track, w), SwitchBoxSide.SOUTH,
                            track, SwitchBoxSide.EAST))
             # t3, t_0
-            result.append((track, SwitchBoxSide.NORTH,
+            result.append((track, SwitchBoxSide.SOUTH,
                           mod(track + 1, w), SwitchBoxSide.WEST))
             result.append((mod(track + 1, w), SwitchBoxSide.WEST,
-                           track, SwitchBoxSide.NORTH))
+                           track, SwitchBoxSide.SOUTH))
         return result
 
     @staticmethod
