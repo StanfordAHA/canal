@@ -370,17 +370,18 @@ class ExclusiveNodeFanout(Generator):
     def __init__(self, height: int):
         super(ExclusiveNodeFanout, self).__init__(
             f"ExclusiveNodeFanout_H{height}")
-        self.input("I", height)
-        self.output("O", 1)
+        i = self.input("I", height)
+        o = self.output("O", 1)
         sel_size = int(math.pow(2, kratos.clog2(height)))
-        self.input("S", sel_size)
-        assert height >= 1
+        s = self.input("S", sel_size)
+        assert height > 1
 
-        expr = self.ports.I[0] & self.ports.S[0]
-        for i in range(1, height):
-            expr = expr | (self.ports.I[i] & self.ports.S[i])
-
-        self.wire(self.ports.O, expr)
+        comb = self.combinational()
+        case = kratos.SwitchStmt(s)
+        for h in range(height):
+            case.case_(1 << h, o.assign(i[h]))
+        case.case_(None, o.assign(0))
+        comb.add_stmt(case)
 
     @staticmethod
     def get(height: int):
