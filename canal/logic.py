@@ -281,12 +281,12 @@ class SplitFifo(Generator):
         fifo_en = self.input("fifo_en", 1)
 
         # need to add clock enables
-        self.clock_en("clk_en")
+        clk_en = self.clock_en("clk_en")
 
         self.wire(ready_in, ready1.and_(~start_fifo))
-        self.wire(ready0, kratos.ternary(fifo_en, empty.or_(ready_in), 1))
+        self.wire(ready0, kratos.ternary(fifo_en, empty.or_(ready_in), clk_en))
         self.wire(valid_in, valid0.and_(~end_fifo))
-        self.wire(valid1, kratos.ternary(fifo_en, (~empty).or_(valid_in), 1))
+        self.wire(valid1, kratos.ternary(fifo_en, (~empty).or_(valid_in), clk_en))
 
         self.wire(data_out, kratos.ternary(empty.and_(fifo_en), data_in, value))
 
@@ -294,7 +294,7 @@ class SplitFifo(Generator):
         def value_logic():
             if rst:
                 value = 0
-            else:
+            elif clk_en:
                 if (~fifo_en).or_(valid0.and_(ready0).and_(~(empty.and_(ready1).and_(valid1)))):
                     value = data_in
 
@@ -302,7 +302,7 @@ class SplitFifo(Generator):
         def empty_logic():
             if rst:
                 empty_n = 0
-            else:
+            elif clk_en:
                 if fifo_en:
                     if valid1.and_(ready1):
                         if ~(valid0.and_(ready0)):
