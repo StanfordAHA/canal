@@ -272,6 +272,8 @@ class Interconnect(generator.Generator):
                 if tile.switchbox.num_track > 0 or tile.core is None:
                     continue
                 for port_name, port_node in tile.ports.items():
+                    if port_name == "flush":
+                        continue
                     tile_port = self.tile_circuits[coord].ports[port_name]
                     # FIXME: this is a hack
                     valid_connected = False
