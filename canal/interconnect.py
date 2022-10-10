@@ -645,9 +645,9 @@ class Interconnect(generator.Generator):
                 for x in range(max_num_col):
                     coord = (x, y)
                     if coord not in self.tile_circuits:
-                        f.write("1")
+                        f.write("1 ")
                     else:
-                        f.write("0")
+                        f.write("0 ")
                 f.write("\n")
             f.write("END\n")
             # looping through the tiles to figure what core it has
@@ -665,15 +665,15 @@ class Interconnect(generator.Generator):
                         for x in range(max_num_col):
                             coord = (x, y)
                             if coord not in self.tile_circuits:
-                                f.write("0")
+                                f.write("0 ")
                             else:
                                 tile = self.tile_circuits[coord]
                                 cores = [tile.core] + tile.additional_cores
                                 core_names = [core.name() for core in cores]
                                 if core_name not in core_names:
-                                    f.write("0")
+                                    f.write("0 ")
                                 else:
-                                    f.write("1")
+                                    f.write("1 ")
                         f.write("\n")
                     f.write("END\n")
             # handle registers
@@ -683,9 +683,9 @@ class Interconnect(generator.Generator):
             for y in range(self.y_max + 1):
                 for x in range(max_num_col):
                     if (x, y) in r_locs:
-                        f.write("1")
+                        f.write("5 ")
                     else:
-                        f.write("0")
+                        f.write("0 ")
                 f.write("\n")
             f.write("END\n")
 
