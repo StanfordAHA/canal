@@ -701,12 +701,19 @@ class InterconnectGraph:
                                                         io))
             self.set_core_connection(x, y, port_name, connections)
 
-    def set_inter_core_connection(self, from_name: str, to_name: str):
-        for tile in self.__tiles.values():
-            from_node: PortNode = tile.get_port(from_name)
-            to_node: PortNode = tile.get_port(to_name)
-            if from_node is not None and to_node is not None:
-                from_node.add_edge(to_node)
+    def set_inter_core_connection(self, inter_core_connection):
+        self.inter_core_connection = inter_core_connection
+        for from_name, to_names in inter_core_connection.items():
+            for to_name in to_names: 
+                connection_added = False
+                for tile in self.__tiles.values():
+                    from_node: PortNode = tile.get_port(from_name)
+                    to_node: PortNode = tile.get_port(to_name)
+                    if from_node is not None and to_node is not None:
+                        from_node.add_edge(to_node)
+                        connection_added = True
+                assert connection_added, \
+                f"Couldn't make inter-core connection betweeen {from_name} and {to_name}"
 
     def set_core(self, x: int, y: int, core: InterconnectCore):
         tile = self.get_tile(x, y)

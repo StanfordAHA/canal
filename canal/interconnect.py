@@ -272,6 +272,8 @@ class Interconnect(generator.Generator):
                 if tile.switchbox.num_track > 0 or tile.core is None:
                     continue
                 for port_name, port_node in tile.ports.items():
+                    if port_name == "flush":
+                        continue
                     tile_port = self.tile_circuits[coord].ports[port_name]
                     # FIXME: this is a hack
                     valid_connected = False
@@ -520,12 +522,14 @@ class Interconnect(generator.Generator):
                         idx += 1
                     if len(reg_nodes) != 0:
                         assert len(reg_nodes) != 1, "Cannot have standalone FIFO reg in the segment"
-                        first_node = reg_nodes[0]
-                        last_node = reg_nodes[-1]
-                        config = self.__set_fifo_mode(first_node, True, False)
-                        result += config
-                        config = self.__set_fifo_mode(last_node, False, True)
-                        result += config
+                        assert len(reg_nodes) % 2 == 0, "Must have even number of FIFO regs"
+                        for idx in range(0, len(reg_nodes), 2):
+                            first_node = reg_nodes[idx]
+                            last_node = reg_nodes[idx + 1]
+                            config = self.__set_fifo_mode(first_node, True, False)
+                            result += config
+                            config = self.__set_fifo_mode(last_node, False, True)
+                            result += config
 
         return result
 
