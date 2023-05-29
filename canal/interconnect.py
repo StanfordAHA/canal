@@ -537,6 +537,9 @@ class Interconnect(generator.Generator):
         result = None
         if pnr_tag is None:
             # backward-compatible with the old code usage
+            if x == 4 and y == 0:
+                breakpoint()
+                instr[1].pop("sparse_mode")
             result = tile.core.get_config_bitstream(instr)
             core_ = tile.core
         else:
