@@ -2,7 +2,7 @@ import magma
 from ordered_set import OrderedSet
 import os
 from .cyclone import InterconnectGraph, SwitchBoxSide, Node, PortNode
-from .cyclone import Tile, SwitchBoxNode, SwitchBoxIO, RegisterMuxNode
+from .cyclone import Tile, SwitchBoxNode, SwitchBoxIO, RegisterMuxNode, RegisterNode
 from typing import Dict, Tuple, List
 import gemstone.generator.generator as generator
 from .circuit import TileCircuit, create_name
@@ -248,11 +248,21 @@ class Interconnect(generator.Generator):
                             p = self.add_port(ready_name, magma.In(magma.Bit))
                             self.wire(p, tile.ports[sb_name + "_ready"])
                             self.__interface[ready_name] = sb_port
+
+                            valid_name = new_sb_name + "_valid"
+                            p = self.add_port(valid_name, magma.Out(magma.Bit))
+                            self.wire(p, tile.ports[sb_name + "_valid"])
+                            self.__interface[valid_name] = sb_port
                         else:
                             valid_name = new_sb_name + "_valid"
                             p = self.add_port(valid_name, magma.BitIn)
                             self.wire(p, tile.ports[sb_name + "_valid"])
                             self.__interface[valid_name] = sb_port
+
+                            ready_name = new_sb_name + "_ready"
+                            p = self.add_port(ready_name, magma.Out(magma.Bit))
+                            self.wire(p, tile.ports[sb_name + "_ready"])
+                            self.__interface[ready_name] = sb_port
 
     def __connect_margin_tiles(self):
         # connect these margin tiles
@@ -262,7 +272,11 @@ class Interconnect(generator.Generator):
                 if tile.switchbox.num_track > 0 or tile.core is None:
                     continue
                 for port_name, port_node in tile.ports.items():
+                    if port_name == "flush":
+                        continue
                     tile_port = self.tile_circuits[coord].ports[port_name]
+                    # FIXME: this is a hack
+                    valid_connected = False
                     if len(port_node) == 0 and \
                             len(port_node.get_conn_in()) == 0:
                         # lift this port up
@@ -271,6 +285,17 @@ class Interconnect(generator.Generator):
                         self.add_port(new_port_name, tile_port.base_type())
                         self.__interface[new_port_name] = port_node
                         self.wire(self.ports[new_port_name], tile_port)
+
+                        # need to create ready-valid port for them as well
+                        if self.ready_valid:
+                            ready_name = port_name + "_ready"
+                            ready_port = self.tile_circuits[coord].ports[ready_name]
+                            if ready_name not in self.ports:
+                                p = self.add_port(new_port_name + "_ready", ready_port.base_type())
+                                self.wire(p, ready_port)
+                                valid_port = self.tile_circuits[coord].ports[port_name + "_valid"]
+                                p = self.add_port(new_port_name + "_valid", valid_port.base_type())
+                                self.wire(p, valid_port)
                     else:
                         # connect them to the internal fabric
                         nodes = list(port_node) + port_node.get_conn_in()[:]
@@ -297,10 +322,39 @@ class Interconnect(generator.Generator):
                                 self.tile_circuits[next_coord].ports[sb_name]
                             if len(port_node.get_conn_in()) <= 1:
                                 self.wire(tile_port, next_port)
+                                if self.ready_valid:
+                                    # FIXME: this is a hack to get stuff connected. Notice that the newest CB has
+                                    # connection box, but we haven't dealt with the connection box wide connections
+                                    # yet
+                                    # if this is a fanout, we need to deal with the ready fanin
+                                    # because this is an IO, we directly OR them together
+                                    ready_port = self.tile_circuits[coord].ports[port_name + "_ready"]
+                                    if len(port_node) > 1:
+                                        # need to modify the ports and change it into a multiple ports
+                                        idx = list(port_node).index(sb_node)
+                                        ready_port = ready_port[idx]
+                                    if ready_port.base_type() is magma.BitOut:
+                                        next_ready_port = self.tile_circuits[next_coord].ports[sb_name + "_ready"]
+                                        self.wire(next_ready_port, ready_port)
+                                    elif sb_node in port_node:
+                                        # coming to that node
+                                        next_ready_port = self.tile_circuits[next_coord].ports[sb_name + "_ready"]
+                                        self.wire(next_ready_port, ready_port)
+                                    valid_port = self.tile_circuits[coord].ports[port_name + "_valid"]
+                                    if valid_port.base_type() is magma.BitOut:
+                                        next_valid_port = self.tile_circuits[next_coord].ports[sb_name + "_valid"]
+                                        self.wire(next_valid_port, valid_port)
+                                    elif not valid_connected:
+                                        next_valid_port = self.tile_circuits[next_coord].ports[sb_name + "_valid"]
+                                        self.wire(next_valid_port, valid_port)
+                                        valid_connected = True
                             else:
                                 # need to get the sliced port
                                 idx = port_node.get_conn_in().index(next_node)
                                 self.wire(tile_port[idx], next_port)
+                                if self.ready_valid:
+                                    raise RuntimeError("Not supported")
+
 
     def __ground_ports(self):
         # this is a pass to ground every sb ports that's not connected
@@ -308,16 +362,28 @@ class Interconnect(generator.Generator):
             for bit_width, tile in tile_dict.items():
                 ground = Const(magma.Bits[bit_width](0))
                 for sb in tile.switchbox.get_all_sbs():
-                    if sb.io != SwitchBoxIO.SB_IN:
-                        continue
-                    if sb.get_conn_in():
-                        continue
-                    # no connection to that sb port, ground it
-                    sb_name = create_name(str(sb))
-                    sb_port = self.tile_circuits[coord].ports[sb_name]
-                    self.wire(ground, sb_port)
-                    if self.ready_valid:
-                        self.wire(ground, self.tile_circuits[coord].ports[sb_name + "_ready"])
+                    if sb.io == SwitchBoxIO.SB_IN:
+                        if sb.get_conn_in():
+                            continue
+                        # no connection to that sb port, ground it
+                        sb_name = create_name(str(sb))
+                        sb_port = self.tile_circuits[coord].ports[sb_name]
+                        self.wire(ground, sb_port)
+                        if self.ready_valid:
+                            self.wire(Const(magma.Bit(0)), self.tile_circuits[coord].ports[sb_name + "_valid"])
+                    else:
+                        margin = False
+                        if len(sb) > 0:
+                            for n in sb:
+                                if isinstance(n, RegisterMuxNode):
+                                    margin = len(n) == 0
+                        else:
+                            margin = True
+                        if not margin:
+                            continue
+                        if self.ready_valid:
+                            sb_name = create_name(str(sb))
+                            self.wire(Const(magma.Bit(0)), self.tile_circuits[coord].ports[sb_name + "_ready"])
 
     def __cleanup_tiles(self):
         tiles_to_remove = set()
@@ -387,12 +453,12 @@ class Interconnect(generator.Generator):
         for _, tile in self.tile_circuits.items():
             tile.finalize()
 
-    def get_node_bitstream_config(self, src_node: Node, dst_node: Node, ready_valid: bool = False):
+    def get_node_bitstream_config(self, src_node: Node, dst_node: Node):
         # this is the complete one which includes the tile_id
         x, y = dst_node.x, dst_node.y
         tile = self.tile_circuits[(x, y)]
         res = []
-        configs = tile.get_route_bitstream_config(src_node, dst_node, ready_valid=ready_valid)
+        configs = tile.get_route_bitstream_config(src_node, dst_node)
 
         def add_config(entry):
             reg_addr, feat_addr, data = entry
@@ -407,7 +473,18 @@ class Interconnect(generator.Generator):
 
         return res
 
-    def get_route_bitstream(self, routes: Dict[str, List[List[Node]]], ready_valid: bool = False):
+    def __set_fifo_mode(self, node: RegisterNode, start: bool, end: bool):
+        x, y = node.x, node.y
+        tile = self.tile_circuits[(x, y)]
+        config_data = tile.configure_fifo(node, start, end)
+        res = []
+        for reg_addr, feat_addr, data in config_data:
+            addr = self.get_config_addr(reg_addr, feat_addr, x, y)
+            res.append((addr, data))
+
+        return res
+
+    def get_route_bitstream(self, routes: Dict[str, List[List[Node]]], use_fifo: bool = False):
         result = []
         for _, route in routes.items():
             for segment in route:
@@ -424,11 +501,36 @@ class Interconnect(generator.Generator):
                     if len(next_node.get_conn_in()) == 1:
                         # no mux created. skip
                         continue
-                    configs = self.get_node_bitstream_config(pre_node,
-                                                             next_node,
-                                                             ready_valid=ready_valid)
+                    configs = self.get_node_bitstream_config(pre_node, next_node,)
                     for addr, data in configs:
                         result.append((addr, data))
+                if use_fifo and len(segment) >= 4:
+                    reg_nodes = []
+                    idx = 0
+                    while idx < (len(segment) - 4):
+                        pre_node = segment[idx]
+                        if isinstance(pre_node, RegisterNode):
+                            if pre_node not in reg_nodes:
+                                reg_nodes.append(pre_node)
+                            # reg -> rmux -> sb -> sb -> reg
+                            next_idx = idx + 4
+                            next_node = segment[next_idx]
+                            if isinstance(next_node, RegisterNode):
+                                if next_node not in reg_nodes:
+                                    reg_nodes.append(next_node)
+                                idx += 4
+                        idx += 1
+                    if len(reg_nodes) != 0:
+                        assert len(reg_nodes) != 1, "Cannot have standalone FIFO reg in the segment"
+                        assert len(reg_nodes) % 2 == 0, "Must have even number of FIFO regs"
+                        for idx in range(0, len(reg_nodes), 2):
+                            first_node = reg_nodes[idx]
+                            last_node = reg_nodes[idx + 1]
+                            config = self.__set_fifo_mode(first_node, True, False)
+                            result += config
+                            config = self.__set_fifo_mode(last_node, False, True)
+                            result += config
+
         return result
 
     def configure_placement(self, x: int, y: int, instr, pnr_tag=None):
@@ -545,9 +647,9 @@ class Interconnect(generator.Generator):
                 for x in range(max_num_col):
                     coord = (x, y)
                     if coord not in self.tile_circuits:
-                        f.write("1")
+                        f.write("1 ")
                     else:
-                        f.write("0")
+                        f.write("0 ")
                 f.write("\n")
             f.write("END\n")
             # looping through the tiles to figure what core it has
@@ -565,15 +667,15 @@ class Interconnect(generator.Generator):
                         for x in range(max_num_col):
                             coord = (x, y)
                             if coord not in self.tile_circuits:
-                                f.write("0")
+                                f.write("0 ")
                             else:
                                 tile = self.tile_circuits[coord]
                                 cores = [tile.core] + tile.additional_cores
                                 core_names = [core.name() for core in cores]
                                 if core_name not in core_names:
-                                    f.write("0")
+                                    f.write("0 ")
                                 else:
-                                    f.write("1")
+                                    f.write("1 ")
                         f.write("\n")
                     f.write("END\n")
             # handle registers
@@ -583,9 +685,9 @@ class Interconnect(generator.Generator):
             for y in range(self.y_max + 1):
                 for x in range(max_num_col):
                     if (x, y) in r_locs:
-                        f.write("1")
+                        f.write("20 ")
                     else:
-                        f.write("0")
+                        f.write("0 ")
                 f.write("\n")
             f.write("END\n")
 

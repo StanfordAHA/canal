@@ -70,7 +70,9 @@ def create_dummy_cgra(chip_size, num_tracks, reg_mode, wiring, num_cfg=1,
         ic = create_uniform_interconnect(chip_size, chip_size, bit_width,
                                          create_core,
                                          {f"data_in_{bit_width}b": in_conn,
-                                          f"data_out_{bit_width}b": out_conn},
+                                          f"data_out_{bit_width}b": out_conn,
+                                          f"data_in_{bit_width}b_comb":
+                                              in_conn},
                                          {track_length: num_tracks},
                                          SwitchBoxType.Disjoint,
                                          pipeline_regs)
@@ -379,7 +381,7 @@ def test_parallel_meso_wiring(num_cfg: int):
         magma.compile(rtl_path, circuit, output="coreir-verilog")
 
 
-def test_ready_valid():
+def test_ready_valid_verilog():
     _, _, _, interconnect = create_dummy_cgra(2,
                                               2,
                                               True,
@@ -403,5 +405,98 @@ def test_skip_addr():
     assert len(skip_addrs) == 256
 
 
+def test_ready_valid_fifo():
+    chip_size = 2
+    _, _, _, interconnect = create_dummy_cgra(chip_size,
+                                              1,
+                                              True,
+                                              GlobalSignalWiring.Fanout,
+                                              ready_valid=True)
+
+    # we have a 2x1 (for instance) chip as follows
+    # |-------|
+    # | A | B |
+    # |---|---|
+    # we need to test from A -> B with FIFO enabled
+    track = 0
+    route = []
+    for x in range(chip_size):
+        tile_circuit = interconnect.tile_circuits[(x, 0)]
+        # only interested in 16 bit
+        tile = tile_circuit.tiles[16]
+        node = tile.get_sb(SwitchBoxSide.WEST, track, SwitchBoxIO.SB_IN)
+        route.append(node)
+        node = tile.get_sb(SwitchBoxSide.EAST, track, SwitchBoxIO.SB_OUT)
+        route.append(node)
+        # the register mux
+        node = tile.switchbox.get_register(SwitchBoxSide.EAST, track)
+        route.append(node)
+        node = tile.switchbox.get_reg_mux(SwitchBoxSide.EAST, track)
+        route.append(node)
+
+    config_data = interconnect.get_route_bitstream({"e1": [route]},
+                                                   use_fifo=True)
+    config_data = compress_config_data(config_data)
+    circuit = interconnect.circuit()
+    tester = BasicTester(circuit, circuit.clk, circuit.reset)
+
+    tester.reset()
+
+    for addr, data in config_data:
+        tester.configure(addr, data)
+
+    src_node = interconnect.tile_circuits[(0, 0)].tiles[16].get_sb(
+        SwitchBoxSide.WEST, track, SwitchBoxIO.SB_IN)
+    dst_node = interconnect.tile_circuits[(1, 0)].tiles[16].get_sb(
+        SwitchBoxSide.EAST, track, SwitchBoxIO.SB_OUT)
+
+    src_name = str(src_node) + "_X{0:X}_Y{1:X}".format(0, 0)
+    dst_name = str(dst_node) + "_X{0:X}_Y{1:X}".format(1, 0)
+    ready_in = dst_name + "_ready"
+    ready_out = src_name + "_ready"
+    valid_in = src_name + "_valid"
+    valid_out = dst_name + "_valid"
+
+    # test out holding values
+    tester.poke(circuit.interface[valid_in], 1)
+    tester.eval()
+    test_inputs = list(range(42, 48))
+
+    # the output should be ready
+    tester.expect(circuit.interface[ready_out], 1)
+
+    for v in test_inputs:
+        tester.poke(circuit.interface[src_name], v)
+        tester.step(2)
+
+    tester.eval()
+    # output should not be ready anymore
+    tester.expect(circuit.interface[ready_out], 0)
+
+    # push in more data into the fifo
+    new_value = 10
+    tester.poke(circuit.interface[ready_in], 1)
+    tester.poke(circuit.interface[src_name], new_value)
+    tester.eval()
+    # should be valid
+    tester.expect(circuit.interface[valid_out], 1)
+    tester.expect(circuit.interface[dst_name], test_inputs[0])
+
+    tester.step(2)
+    tester.expect(circuit.interface[valid_out], 1)
+    tester.expect(circuit.interface[dst_name], test_inputs[1])
+
+    tester.step(2)
+    tester.expect(circuit.interface[valid_out], 1)
+    tester.expect(circuit.interface[dst_name], new_value)
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        copy_sv_files(tempdir)
+        tester.compile_and_run(target="verilator",
+                               magma_output="coreir-verilog",
+                               directory=tempdir,
+                               flags=["-Wno-fatal"])
+
+
 if __name__ == "__main__":
-    test_ready_valid()
+    test_ready_valid_fifo()

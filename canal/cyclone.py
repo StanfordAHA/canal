@@ -5,7 +5,7 @@ with adjustments due to language difference.
 
 """
 import enum
-from typing import List, Tuple, Dict, Union, NamedTuple, Iterator
+from typing import List, Tuple, Dict, Union, NamedTuple, Iterator, Set
 from ordered_set import OrderedSet
 from abc import abstractmethod
 
@@ -81,6 +81,9 @@ class InterconnectCore:
     @abstractmethod
     def __eq__(self, other):
         pass
+
+    def combinational_ports(self) -> Set[str]:
+        return set()
 
 
 class Node:
@@ -450,7 +453,7 @@ class Tile:
         # hold for the core
         self.core: InterconnectCore = None
         self.additional_cores = []
-        self.__port_core: Dict[str, InterconnectCore] = {}
+        self.__port_core: Dict[str, List[InterconnectCore]] = {}
 
     def __eq__(self, other):
         if not isinstance(other, Tile):
@@ -486,7 +489,9 @@ class Tile:
                     # create node
                     self.ports[port_name] = PortNode(port_name, self.x,
                                                      self.y, width)
-                    self.__port_core[port_name] = core
+                    if port_name not in self.__port_core:
+                        self.__port_core[port_name] = []
+                    self.__port_core[port_name].append(core)
 
         if connection_type & CoreConnectionType.SB == CoreConnectionType.SB:
             outputs = core.outputs()[:]
@@ -497,7 +502,9 @@ class Tile:
                     # create node
                     self.ports[port_name] = PortNode(port_name, self.x,
                                                      self.y, width)
-                    self.__port_core[port_name] = core
+                    if port_name not in self.__port_core:
+                        self.__port_core[port_name] = []
+                    self.__port_core[port_name].append(core)
 
     def add_additional_core(self, core: InterconnectCore,
                             connection_type: CoreConnectionType):
@@ -523,11 +530,19 @@ class Tile:
                         self.ports[port_name] = PortNode(port_name, self.x,
                                                          self.y, width)
                         self.ports[port_name].add_edge(cb_node)
-                    self.__port_core[port_name] = core
+                    if port_name not in self.__port_core:
+                        self.__port_core[port_name] = []
+                    self.__port_core[port_name].append(core)
 
-    def get_port_ref(self, port_name):
-        assert port_name in self.__port_core
-        return self.__port_core[port_name].get_port_ref(port_name)
+    def get_port_ref(self, port_name, core_port_name=None, search_all=False):
+        if core_port_name is None:
+            core_port_name = port_name
+        assert core_port_name in self.__port_core
+        res = [c.get_port_ref(port_name) for c in self.__port_core[core_port_name]]
+        if len(res) == 1:
+            return res[0]
+        else:
+            return res
 
     def get_port(self, port_name):
         return self.ports.get(port_name, None)
@@ -686,12 +701,19 @@ class InterconnectGraph:
                                                         io))
             self.set_core_connection(x, y, port_name, connections)
 
-    def set_inter_core_connection(self, from_name: str, to_name: str):
-        for tile in self.__tiles.values():
-            from_node: PortNode = tile.get_port(from_name)
-            to_node: PortNode = tile.get_port(to_name)
-            if from_node is not None and to_node is not None:
-                from_node.add_edge(to_node)
+    def set_inter_core_connection(self, inter_core_connection):
+        self.inter_core_connection = inter_core_connection
+        for from_name, to_names in inter_core_connection.items():
+            for to_name in to_names: 
+                connection_added = False
+                for tile in self.__tiles.values():
+                    from_node: PortNode = tile.get_port(from_name)
+                    to_node: PortNode = tile.get_port(to_name)
+                    if from_node is not None and to_node is not None:
+                        from_node.add_edge(to_node)
+                        connection_added = True
+                assert connection_added, \
+                f"Couldn't make inter-core connection betweeen {from_name} and {to_name}"
 
     def set_core(self, x: int, y: int, core: InterconnectCore):
         tile = self.get_tile(x, y)
@@ -1024,24 +1046,24 @@ class SwitchBoxHelper:
                            track, SwitchBoxSide.SOUTH))
             # t_0, t_1
             result.append((track, SwitchBoxSide.WEST,
-                           mod(w - track, w), SwitchBoxSide.SOUTH))
-            result.append((mod(w - track, w), SwitchBoxSide.SOUTH,
+                           mod(w - track, w), SwitchBoxSide.NORTH))
+            result.append((mod(w - track, w), SwitchBoxSide.NORTH,
                            track, SwitchBoxSide.WEST))
             # t_1, t_2
-            result.append((track, SwitchBoxSide.SOUTH,
+            result.append((track, SwitchBoxSide.NORTH,
                            mod(track + 1, w), SwitchBoxSide.EAST))
             result.append((mod(track + 1, w), SwitchBoxSide.EAST,
-                           track, SwitchBoxSide.SOUTH))
+                           track, SwitchBoxSide.NORTH))
             # t_2, t_3
             result.append((track, SwitchBoxSide.EAST,
-                           mod(2 * w - 2 - track, w), SwitchBoxSide.NORTH))
-            result.append((mod(2 * w - 2 - track, w), SwitchBoxSide.NORTH,
+                           mod(2 * w - 2 - track, w), SwitchBoxSide.SOUTH))
+            result.append((mod(2 * w - 2 - track, w), SwitchBoxSide.SOUTH,
                            track, SwitchBoxSide.EAST))
             # t3, t_0
-            result.append((track, SwitchBoxSide.NORTH,
+            result.append((track, SwitchBoxSide.SOUTH,
                           mod(track + 1, w), SwitchBoxSide.WEST))
             result.append((mod(track + 1, w), SwitchBoxSide.WEST,
-                           track, SwitchBoxSide.NORTH))
+                           track, SwitchBoxSide.SOUTH))
         return result
 
     @staticmethod

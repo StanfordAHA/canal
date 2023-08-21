@@ -28,3 +28,6 @@ place and route directly. To install `archipelago`, you can use
 pip install archipelago
 ```
 It will use pre-built Python native wheels to speed up place and route.
+
+-------
+A new kratos-based of canal is [here](https://github.com/Kuree/kcanal).
