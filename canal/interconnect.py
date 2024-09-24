@@ -507,18 +507,11 @@ class Interconnect(generator.Generator):
                 if use_fifo and len(segment) >= 4:
                     reg_nodes = []
                     idx = 0
-                    while idx < (len(segment) - 4):
+                    while idx < len(segment):
                         pre_node = segment[idx]
                         if isinstance(pre_node, RegisterNode):
                             if pre_node not in reg_nodes:
                                 reg_nodes.append(pre_node)
-                            # reg -> rmux -> sb -> sb -> reg
-                            next_idx = idx + 4
-                            next_node = segment[next_idx]
-                            if isinstance(next_node, RegisterNode):
-                                if next_node not in reg_nodes:
-                                    reg_nodes.append(next_node)
-                                idx += 4
                         idx += 1
                     if len(reg_nodes) != 0:
                         assert len(reg_nodes) != 1, "Cannot have standalone FIFO reg in the segment"
@@ -813,3 +806,4 @@ class Interconnect(generator.Generator):
 
     def name(self):
         return "Interconnect"
+        
