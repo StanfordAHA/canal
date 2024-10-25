@@ -86,6 +86,8 @@ class Interconnect(generator.Generator):
                             double_buffer=self.double_buffer,
                             ready_valid=self.ready_valid)
 
+        #breakpoint()
+
         # we need to deal with inter-tile connections now
         # we only limit mesh
 

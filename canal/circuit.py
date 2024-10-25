@@ -1208,6 +1208,7 @@ class TileCircuit(GemstoneGenerator):
             if sb.switchbox.num_track > 0:
                 continue
             # lift the input ports up
+            #print(self.core)
             for bt, port_name in self.core_interface.inputs():
                 if bt != bit_width:
                     continue
@@ -1216,6 +1217,9 @@ class TileCircuit(GemstoneGenerator):
                 # if it has no connection, then we lift it up
                 port_node = self.tiles[bit_width].ports[port_name]
                 if port_node.get_conn_in():
+                    # print("\nConn in is true!")
+                    # print(port_node)
+                    # print("\n")
                     cb_input_port = self.cbs[port_name].ports.I
                     # use the CB input type instead
                     self.add_port(port_name, cb_input_port.base_type())
@@ -1227,9 +1231,16 @@ class TileCircuit(GemstoneGenerator):
                         p = self.add_port(port_name + "_valid", magma.BitIn)
                         self.safe_wire(p, self.cbs[port_name].ports.valid_in)
                 else:
+                    # print("\nConn in is false!")
+                    # print(port_node)
+                    # print("\n")
                     self.add_port(port_name, magma.In(magma.Bits[bit_width]))
                     self.wire(self.ports[port_name], self.core.ports[port_name])
+                    #print(self.combinational_ports)
                     if self.ready_valid and port_name not in self.combinational_ports:
+                        if "flush" in port_name:
+                            continue 
+                        #    print(f"port name not in combo ports: {port_name}")
                         core_ready = self.core.ports[port_name + "_ready"]
                         core_valid = self.core.ports[port_name + "_valid"]
                         if core_valid.base_type() is magma.In(magma.Bits[1]):

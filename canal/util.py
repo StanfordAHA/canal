@@ -37,7 +37,10 @@ def compute_num_tracks(x_offset: int, y_offset: int,
 
 
 def get_array_size(width, height, io_sides):
-    x_min = 1 if io_sides & IOSide.West else 0
+    #x_min = 1 if io_sides & IOSide.West else 0
+
+    # MO: Temporary hack 
+    x_min = 1
     x_max = width - 2 if io_sides & IOSide.East else width - 1
     y_min = 1 if io_sides & IOSide.North else 0
     y_max = height - 2 if io_sides & IOSide.South else height - 1
@@ -115,6 +118,7 @@ def create_uniform_interconnect(width: int,
 
             interconnect.add_tile(tile_circuit)
             core = column_core_fn(x, y)
+ 
             core_interface = CoreInterface(core)
             interconnect.set_core(x, y, core_interface)
 
@@ -132,12 +136,37 @@ def create_uniform_interconnect(width: int,
             if tile is not None:
                 continue
             core = column_core_fn(x, y)
+
+            #breakpoint()
+            
+            # Here the MU ports are still alive
+            # if x == 0 and y == 7:
+            #     print(core.ports)
+
+            # They seem to disappear afterwards...figure out where they disappear and why
+            # Figure out how to alter the io_cons to include mu2f and vice versa 
+           
             sb = SwitchBox(x, y, 0, track_width, [])
             tile_circuit = Tile(x, y, track_width, sb, tile_height)
             interconnect.add_tile(tile_circuit)
+         
             core_interface = CoreInterface(core)
+            # if x == 0 and y == 7:
+            #     print(core_interface.inputs())
+            #     print(core_interface.outputs())
+                #breakpoint()
             interconnect.set_core(x, y, core_interface)
+            # if x == 0 and y == 7:
+            #     print(interconnect[(x, y)].inputs)
+            #     print(interconnect[(x, y)].outputs)
+                #breakpoint()
 
+
+    #print(interconnect[(0, 7)].ports)
+    # print(interconnect[(1, 0)].inputs)
+    # print(interconnect[(1, 0)].outputs)
+    # print(interconnect[(1, 0)].core)
+    #breakpoint()
     # set port connections
     port_names = list(port_connections.keys())
     port_names.sort()
@@ -195,8 +224,12 @@ def connect_io(interconnect: InterconnectGraph,
             if x in range(x_min, x_max + 1) and \
                     y in range(y_min, y_max + 1):
                 continue
+         
+            
             # make sure that these margins tiles have empty switch boxes
             tile = interconnect[(x, y)]
+            # print(f"X: {x}, Y: {y}")
+            print(tile.ports)
             if tile.core.core is None:
                 continue
             assert tile.switchbox.num_track == 0
