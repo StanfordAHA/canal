@@ -193,6 +193,7 @@ def create_uniform_interconnect(width: int,
 
     # insert io
     connect_io(interconnect, io_conn["in"], io_conn["out"], io_sides)
+    #breakpoint()
 
     # insert pipeline register
     if pipeline_reg is None:
@@ -224,10 +225,12 @@ def connect_io(interconnect: InterconnectGraph,
             if x in range(x_min, x_max + 1) and \
                     y in range(y_min, y_max + 1):
                 continue
-         
-            
+
+            print(f"x, y: {x}, {y}")
+           
             # make sure that these margins tiles have empty switch boxes
             tile = interconnect[(x, y)]
+
             # print(f"X: {x}, Y: {y}")
             print(tile.ports)
             if tile.core.core is None:
@@ -248,6 +251,7 @@ def connect_io(interconnect: InterconnectGraph,
                 next_tile = interconnect[(x, y - 1)]
                 side = SwitchBoxSide.SOUTH
             for input_port, conn in input_port_conn.items():
+                #breakpoint()
                 # input is from fabric to IO
                 if input_port in tile.ports:
                     port_node = tile.ports[input_port]
@@ -259,6 +263,11 @@ def connect_io(interconnect: InterconnectGraph,
                             sb_node = next_tile.get_sb(side, track,
                                                        SwitchBoxIO.SB_OUT)
                             sb_node.add_edge(port_node)
+
+            # if "io2f_17_0" in output_port_conn:
+            #     print("Hit breakpoint")
+            #     breakpoint()
+            
             for output_port, conn in output_port_conn.items():
                 # output is IO to fabric
                 if output_port in tile.ports:

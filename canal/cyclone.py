@@ -482,8 +482,11 @@ class Tile:
                    CoreConnectionType.Default):
         if connection_type & CoreConnectionType.CB == CoreConnectionType.CB:
             inputs = core.inputs()[:]
+            #print(inputs)
             inputs.sort(key=lambda x: x[1])
             for width, port_name in inputs:
+                #if "mu2io_16_1" in port_name:
+                #    breakpoint()
                 if width == self.track_width:
                     self.inputs.add(port_name)
                     # create node
@@ -494,9 +497,13 @@ class Tile:
                     self.__port_core[port_name].append(core)
 
         if connection_type & CoreConnectionType.SB == CoreConnectionType.SB:
+            
             outputs = core.outputs()[:]
+            print(outputs)
             outputs.sort(key=lambda x: x[1])
             for width, port_name in outputs:
+                #if "io2f_17_0" in port_name:
+                #    breakpoint()
                 if width == self.track_width:
                     self.outputs.add(port_name)
                     # create node

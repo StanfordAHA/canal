@@ -266,6 +266,9 @@ class Interconnect(generator.Generator):
                             self.wire(p, tile.ports[sb_name + "_ready"])
                             self.__interface[ready_name] = sb_port
 
+    # def connect_matrix_unit_stall_port(self):
+    #     breakpoint()
+
     def __connect_margin_tiles(self):
         # connect these margin tiles
         # margin tiles have empty switchbox
