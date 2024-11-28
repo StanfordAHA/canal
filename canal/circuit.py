@@ -1270,10 +1270,7 @@ class TileCircuit(GemstoneGenerator):
                     if core_ready.base_type() is magma.In(magma.Bits[1]):
                         core_ready = core_ready[0]
                     if len(port_node) > 1:
-                        if self.core.name() == "MU2F_IOCoreReadyValid":
-                            fanout = FromMagma(mantle.DefineOr(len(port_node)))
-                        else: 
-                            fanout = FromMagma(mantle.DefineAnd(len(port_node)))
+                        fanout = FromMagma(mantle.DefineAnd(len(port_node)))
                         fanout.instance_name = port_name + "_ready_merge"
                         p = self.add_port(port_name + "_ready", magma.In(magma.Bits[len(port_node)]))
                         self.wire(fanout.ports.O[0], core_ready)
