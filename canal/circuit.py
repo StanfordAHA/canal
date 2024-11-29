@@ -1236,7 +1236,6 @@ class TileCircuit(GemstoneGenerator):
                     # print("\n")
                     self.add_port(port_name, magma.In(magma.Bits[bit_width]))
                     self.wire(self.ports[port_name], self.core.ports[port_name])
-                    print(self.combinational_ports)
                     if self.ready_valid and port_name not in self.combinational_ports:
                         # if "flush" in port_name:
                         #     continue 

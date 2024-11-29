@@ -499,7 +499,6 @@ class Tile:
         if connection_type & CoreConnectionType.SB == CoreConnectionType.SB:
             
             outputs = core.outputs()[:]
-            print(outputs)
             outputs.sort(key=lambda x: x[1])
             for width, port_name in outputs:
                 #if "io2f_17_0" in port_name:

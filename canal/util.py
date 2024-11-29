@@ -233,14 +233,11 @@ def connect_io(interconnect: InterconnectGraph,
             if x in range(x_min, x_max + 1) and \
                     y in range(y_min, y_max + 1):
                 continue
-
-            print(f"x, y: {x}, {y}")
            
             # make sure that these margins tiles have empty switch boxes
             tile = interconnect[(x, y)]
 
             # print(f"X: {x}, Y: {y}")
-            print(tile.ports)
             if tile.core.core is None:
                 continue
             assert tile.switchbox.num_track == 0
