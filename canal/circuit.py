@@ -1238,8 +1238,8 @@ class TileCircuit(GemstoneGenerator):
                     self.wire(self.ports[port_name], self.core.ports[port_name])
                     print(self.combinational_ports)
                     if self.ready_valid and port_name not in self.combinational_ports:
-                        if "flush" in port_name:
-                            continue 
+                        # if "flush" in port_name:
+                        #     continue 
                         #    print(f"port name not in combo ports: {port_name}")
                         core_ready = self.core.ports[port_name + "_ready"]
                         core_valid = self.core.ports[port_name + "_valid"]

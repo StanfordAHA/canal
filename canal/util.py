@@ -40,10 +40,15 @@ def get_array_size(width, height, io_sides):
     #x_min = 1 if io_sides & IOSide.West else 0
 
     # MO: Temporary hack 
-    x_min = 1
-    x_max = width - 2 if io_sides & IOSide.East else width - 1
-    y_min = 1 if io_sides & IOSide.North else 0
-    y_max = height - 2 if io_sides & IOSide.South else height - 1
+    #x_min = 1
+    # x_max = width - 2 if io_sides & IOSide.East else width - 1
+    # y_min = 1 if io_sides & IOSide.North else 0
+    # y_max = height - 2 if io_sides & IOSide.South else height - 1
+
+    x_min = 1 if IOSide.West in io_sides else 0
+    x_max = width - 2 if IOSide.East in io_sides else width - 1
+    y_min = 1 if IOSide.North in io_sides else 0
+    y_max = height - 2 if IOSide.South in io_sides else height - 1
     return x_min, x_max, y_min, y_max
 
 
@@ -59,7 +64,7 @@ def create_uniform_interconnect(width: int,
                                 sb_type: SwitchBoxType,
                                 pipeline_reg:
                                 List[Tuple[int, SwitchBoxSide]] = None,
-                                io_sides: IOSide = IOSide.None_,
+                                io_sides: List[IOSide] = [IOSide.None_],
                                 io_conn: Dict[str, Dict[str, List[int]]] = None,
                                 additional_core_fn: Callable[[int, int], Core] = lambda _, __: None,
                                 inter_core_connection: Dict[str, List[str]] = None
@@ -90,13 +95,15 @@ def create_uniform_interconnect(width: int,
 
     :return configured Interconnect object
     """
-    if io_sides & IOSide.None_ or io_conn is None:
+    # if io_sides & IOSide.None_ or io_conn is None:
+    if IOSide.None_ in io_sides or io_conn is None:
         io_conn = {"in": {}, "out": {}}
     tile_height = 1
     interconnect = InterconnectGraph(track_width)
     # based on the IO sides specified. these are inclusive
     # once it's assigned to None, nullify everything
-    if io_sides & IOSide.None_:
+    # if io_sides & IOSide.None_:
+    if IOSide.None_ in io_sides:
         io_sides = IOSide.None_
     x_min, x_max, y_min, y_max = get_array_size(width, height, io_sides)
     # create tiles and set cores
@@ -212,9 +219,10 @@ def create_uniform_interconnect(width: int,
 def connect_io(interconnect: InterconnectGraph,
                input_port_conn: Dict[str, List[int]],
                output_port_conn: Dict[str, List[int]],
-               io_sides: IOSide):
+               io_sides: List[IOSide]):
     """connect tiles on the side"""
-    if io_sides & IOSide.None_:
+    # if io_sides & IOSide.None_:
+    if IOSide.None_ in io_sides:
         return
 
     width, height = interconnect.get_size()
