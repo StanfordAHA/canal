@@ -94,7 +94,7 @@ def create_uniform_interconnect(width: int,
     # based on the IO sides specified. these are inclusive
     # once it's assigned to None, nullify everything
     if IOSide.None_ in io_sides:
-        io_sides = IOSide.None_
+        io_sides = [IOSide.None_]
     x_min, x_max, y_min, y_max = get_array_size(width, height, io_sides)
     # create tiles and set cores
     for x in range(x_min, x_max + 1):
