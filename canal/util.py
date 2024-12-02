@@ -37,14 +37,6 @@ def compute_num_tracks(x_offset: int, y_offset: int,
 
 
 def get_array_size(width, height, io_sides):
-    #x_min = 1 if io_sides & IOSide.West else 0
-
-    # MO: Temporary hack 
-    #x_min = 1
-    # x_max = width - 2 if io_sides & IOSide.East else width - 1
-    # y_min = 1 if io_sides & IOSide.North else 0
-    # y_max = height - 2 if io_sides & IOSide.South else height - 1
-
     x_min = 1 if IOSide.West in io_sides else 0
     x_max = width - 2 if IOSide.East in io_sides else width - 1
     y_min = 1 if IOSide.North in io_sides else 0
@@ -95,14 +87,12 @@ def create_uniform_interconnect(width: int,
 
     :return configured Interconnect object
     """
-    # if io_sides & IOSide.None_ or io_conn is None:
     if IOSide.None_ in io_sides or io_conn is None:
         io_conn = {"in": {}, "out": {}}
     tile_height = 1
     interconnect = InterconnectGraph(track_width)
     # based on the IO sides specified. these are inclusive
     # once it's assigned to None, nullify everything
-    # if io_sides & IOSide.None_:
     if IOSide.None_ in io_sides:
         io_sides = IOSide.None_
     x_min, x_max, y_min, y_max = get_array_size(width, height, io_sides)
@@ -143,37 +133,14 @@ def create_uniform_interconnect(width: int,
             if tile is not None:
                 continue
             core = column_core_fn(x, y)
-
-            #breakpoint()
-            
-            # Here the MU ports are still alive
-            # if x == 0 and y == 7:
-            #     print(core.ports)
-
-            # They seem to disappear afterwards...figure out where they disappear and why
-            # Figure out how to alter the io_cons to include mu2f and vice versa 
            
             sb = SwitchBox(x, y, 0, track_width, [])
             tile_circuit = Tile(x, y, track_width, sb, tile_height)
-            interconnect.add_tile(tile_circuit)
-         
+            interconnect.add_tile(tile_circuit)   
             core_interface = CoreInterface(core)
-            # if x == 0 and y == 7:
-            #     print(core_interface.inputs())
-            #     print(core_interface.outputs())
-                #breakpoint()
             interconnect.set_core(x, y, core_interface)
-            # if x == 0 and y == 7:
-            #     print(interconnect[(x, y)].inputs)
-            #     print(interconnect[(x, y)].outputs)
-                #breakpoint()
+    
 
-
-    #print(interconnect[(0, 7)].ports)
-    # print(interconnect[(1, 0)].inputs)
-    # print(interconnect[(1, 0)].outputs)
-    # print(interconnect[(1, 0)].core)
-    #breakpoint()
     # set port connections
     port_names = list(port_connections.keys())
     port_names.sort()
@@ -200,7 +167,6 @@ def create_uniform_interconnect(width: int,
 
     # insert io
     connect_io(interconnect, io_conn["in"], io_conn["out"], io_sides)
-    #breakpoint()
 
     # insert pipeline register
     if pipeline_reg is None:
@@ -221,7 +187,6 @@ def connect_io(interconnect: InterconnectGraph,
                output_port_conn: Dict[str, List[int]],
                io_sides: List[IOSide]):
     """connect tiles on the side"""
-    # if io_sides & IOSide.None_:
     if IOSide.None_ in io_sides:
         return
 
@@ -237,7 +202,6 @@ def connect_io(interconnect: InterconnectGraph,
             # make sure that these margins tiles have empty switch boxes
             tile = interconnect[(x, y)]
 
-            # print(f"X: {x}, Y: {y}")
             if tile.core.core is None:
                 continue
             assert tile.switchbox.num_track == 0
@@ -269,9 +233,6 @@ def connect_io(interconnect: InterconnectGraph,
                                                        SwitchBoxIO.SB_OUT)
                             sb_node.add_edge(port_node)
 
-            # if "io2f_17_0" in output_port_conn:
-            #     print("Hit breakpoint")
-            #     breakpoint()
             
             for output_port, conn in output_port_conn.items():
                 # output is IO to fabric

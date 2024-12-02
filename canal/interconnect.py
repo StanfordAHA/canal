@@ -86,8 +86,6 @@ class Interconnect(generator.Generator):
                             double_buffer=self.double_buffer,
                             ready_valid=self.ready_valid)
 
-        #breakpoint()
-
         # we need to deal with inter-tile connections now
         # we only limit mesh
 
@@ -265,9 +263,6 @@ class Interconnect(generator.Generator):
                             p = self.add_port(ready_name, magma.Out(magma.Bit))
                             self.wire(p, tile.ports[sb_name + "_ready"])
                             self.__interface[ready_name] = sb_port
-
-    # def connect_matrix_unit_stall_port(self):
-    #     breakpoint()
 
     def __connect_margin_tiles(self):
         # connect these margin tiles
@@ -702,6 +697,8 @@ class Interconnect(generator.Generator):
         elif node_str[0] == "REG":
             reg_name, track, x, y, bit_width = node_str[1:]
             graph = self.get_graph(bit_width)
+            if reg_name not in graph.get_tile(x, y).switchbox.registers:
+                breakpoint()
             return graph.get_tile(x, y).switchbox.registers[reg_name]
         elif node_str[0] == "RMUX":
             rmux_name, x, y, bit_width = node_str[1:]
