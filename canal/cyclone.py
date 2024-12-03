@@ -494,6 +494,7 @@ class Tile:
                     self.__port_core[port_name].append(core)
 
         if connection_type & CoreConnectionType.SB == CoreConnectionType.SB:
+            
             outputs = core.outputs()[:]
             outputs.sort(key=lambda x: x[1])
             for width, port_name in outputs:

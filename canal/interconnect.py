@@ -697,6 +697,8 @@ class Interconnect(generator.Generator):
         elif node_str[0] == "REG":
             reg_name, track, x, y, bit_width = node_str[1:]
             graph = self.get_graph(bit_width)
+            if reg_name not in graph.get_tile(x, y).switchbox.registers:
+                breakpoint()
             return graph.get_tile(x, y).switchbox.registers[reg_name]
         elif node_str[0] == "RMUX":
             rmux_name, x, y, bit_width = node_str[1:]

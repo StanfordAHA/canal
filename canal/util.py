@@ -37,10 +37,10 @@ def compute_num_tracks(x_offset: int, y_offset: int,
 
 
 def get_array_size(width, height, io_sides):
-    x_min = 1 if io_sides & IOSide.West else 0
-    x_max = width - 2 if io_sides & IOSide.East else width - 1
-    y_min = 1 if io_sides & IOSide.North else 0
-    y_max = height - 2 if io_sides & IOSide.South else height - 1
+    x_min = 1 if IOSide.West in io_sides else 0
+    x_max = width - 2 if IOSide.East in io_sides else width - 1
+    y_min = 1 if IOSide.North in io_sides else 0
+    y_max = height - 2 if IOSide.South in io_sides else height - 1
     return x_min, x_max, y_min, y_max
 
 
@@ -56,7 +56,7 @@ def create_uniform_interconnect(width: int,
                                 sb_type: SwitchBoxType,
                                 pipeline_reg:
                                 List[Tuple[int, SwitchBoxSide]] = None,
-                                io_sides: IOSide = IOSide.None_,
+                                io_sides: List[IOSide] = [IOSide.None_],
                                 io_conn: Dict[str, Dict[str, List[int]]] = None,
                                 additional_core_fn: Callable[[int, int], Core] = lambda _, __: None,
                                 inter_core_connection: Dict[str, List[str]] = None
@@ -87,14 +87,14 @@ def create_uniform_interconnect(width: int,
 
     :return configured Interconnect object
     """
-    if io_sides & IOSide.None_ or io_conn is None:
+    if IOSide.None_ in io_sides or io_conn is None:
         io_conn = {"in": {}, "out": {}}
     tile_height = 1
     interconnect = InterconnectGraph(track_width)
     # based on the IO sides specified. these are inclusive
     # once it's assigned to None, nullify everything
-    if io_sides & IOSide.None_:
-        io_sides = IOSide.None_
+    if IOSide.None_ in io_sides:
+        io_sides = [IOSide.None_]
     x_min, x_max, y_min, y_max = get_array_size(width, height, io_sides)
     # create tiles and set cores
     for x in range(x_min, x_max + 1):
@@ -115,6 +115,7 @@ def create_uniform_interconnect(width: int,
 
             interconnect.add_tile(tile_circuit)
             core = column_core_fn(x, y)
+ 
             core_interface = CoreInterface(core)
             interconnect.set_core(x, y, core_interface)
 
@@ -132,11 +133,13 @@ def create_uniform_interconnect(width: int,
             if tile is not None:
                 continue
             core = column_core_fn(x, y)
+           
             sb = SwitchBox(x, y, 0, track_width, [])
             tile_circuit = Tile(x, y, track_width, sb, tile_height)
-            interconnect.add_tile(tile_circuit)
+            interconnect.add_tile(tile_circuit)   
             core_interface = CoreInterface(core)
             interconnect.set_core(x, y, core_interface)
+    
 
     # set port connections
     port_names = list(port_connections.keys())
@@ -182,9 +185,9 @@ def create_uniform_interconnect(width: int,
 def connect_io(interconnect: InterconnectGraph,
                input_port_conn: Dict[str, List[int]],
                output_port_conn: Dict[str, List[int]],
-               io_sides: IOSide):
+               io_sides: List[IOSide]):
     """connect tiles on the side"""
-    if io_sides & IOSide.None_:
+    if IOSide.None_ in io_sides:
         return
 
     width, height = interconnect.get_size()
@@ -195,8 +198,10 @@ def connect_io(interconnect: InterconnectGraph,
             if x in range(x_min, x_max + 1) and \
                     y in range(y_min, y_max + 1):
                 continue
+           
             # make sure that these margins tiles have empty switch boxes
             tile = interconnect[(x, y)]
+
             if tile.core.core is None:
                 continue
             assert tile.switchbox.num_track == 0
@@ -215,6 +220,7 @@ def connect_io(interconnect: InterconnectGraph,
                 next_tile = interconnect[(x, y - 1)]
                 side = SwitchBoxSide.SOUTH
             for input_port, conn in input_port_conn.items():
+                #breakpoint()
                 # input is from fabric to IO
                 if input_port in tile.ports:
                     port_node = tile.ports[input_port]
@@ -226,6 +232,8 @@ def connect_io(interconnect: InterconnectGraph,
                             sb_node = next_tile.get_sb(side, track,
                                                        SwitchBoxIO.SB_OUT)
                             sb_node.add_edge(port_node)
+
+            
             for output_port, conn in output_port_conn.items():
                 # output is IO to fabric
                 if output_port in tile.ports:

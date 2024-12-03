@@ -9,6 +9,7 @@ from gemstone.generator.from_magma import FromMagma
 from gemstone.common.configurable import ConfigurationType
 from .interconnect import Interconnect
 from .util import IOSide, get_array_size
+from typing import Tuple, Dict, List, Tuple
 
 
 @enum.unique
@@ -34,7 +35,7 @@ def get_x_range_cores(interconnect: Interconnect):
     return x_min, x_max
 
 
-def apply_global_fanout_wiring(interconnect: Interconnect, io_sides: IOSide = IOSide.None_):
+def apply_global_fanout_wiring(interconnect: Interconnect, io_sides: List[IOSide] = [IOSide.None_]):
     # straight-forward fanout for global signals
     x_min, x_max, = get_x_range_cores(interconnect)
     global_ports = interconnect.globals
@@ -72,7 +73,7 @@ def apply_global_fanout_wiring(interconnect: Interconnect, io_sides: IOSide = IO
     return interconnect_read_data_or
 
 
-def apply_global_meso_wiring(interconnect: Interconnect, io_sides: IOSide = IOSide.None_):
+def apply_global_meso_wiring(interconnect: Interconnect, io_sides: List[IOSide] = [IOSide.None_]):
     # "river routing" for global signal
     global_ports = interconnect.globals
     x_min, x_max, = get_x_range_cores(interconnect)
@@ -145,7 +146,7 @@ def apply_global_meso_wiring(interconnect: Interconnect, io_sides: IOSide = IOSi
 
 
 def apply_global_parallel_meso_wiring(interconnect: Interconnect,
-                                      io_sides: IOSide = IOSide.None_, num_cfg: int = 1):
+                                      io_sides: List[IOSide] = [IOSide.None_], num_cfg: int = 1):
 
     interconnect_read_data_or = apply_global_meso_wiring(interconnect)
     # interconnect must have config port
