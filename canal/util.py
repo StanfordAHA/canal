@@ -58,6 +58,7 @@ def create_uniform_interconnect(width: int,
                                 List[Tuple[int, SwitchBoxSide]] = None,
                                 io_sides: List[IOSide] = [IOSide.None_],
                                 io_conn: Dict[str, Dict[str, List[int]]] = None,
+                                give_north_io_sbs: bool = False,
                                 additional_core_fn: Callable[[int, int], Core] = lambda _, __: None,
                                 inter_core_connection: Dict[str, List[str]] = None
                                 ) -> InterconnectGraph:
@@ -96,9 +97,15 @@ def create_uniform_interconnect(width: int,
     if IOSide.None_ in io_sides:
         io_sides = [IOSide.None_]
     x_min, x_max, y_min, y_max = get_array_size(width, height, io_sides)
+
+    interconnect_x_min = x_min
+    interconnect_x_max = x_max
+    interconnect_y_min = y_min-1 if give_north_io_sbs else y_min
+    interconnect_y_max = y_max
+
     # create tiles and set cores
-    for x in range(x_min, x_max + 1):
-        for y in range(y_min, y_max + 1, tile_height):
+    for x in range(interconnect_x_min, interconnect_x_max + 1):
+        for y in range(interconnect_y_min, interconnect_y_max + 1, tile_height):
             # compute the number of tracks
             num_track = compute_num_tracks(x_min, y_min,
                                            x, y, track_info)
@@ -158,15 +165,15 @@ def create_uniform_interconnect(width: int,
     current_track = 0
     for track_len in track_lens:
         for _ in range(track_info[track_len]):
-            interconnect.connect_switchbox(x_min, y_min, x_max,
-                                           y_max,
+            interconnect.connect_switchbox(interconnect_x_min, interconnect_y_min, interconnect_x_max,
+                                           interconnect_y_max,
                                            track_len,
                                            current_track,
                                            InterconnectPolicy.Ignore)
             current_track += 1
 
     # insert io
-    connect_io(interconnect, io_conn["in"], io_conn["out"], io_sides)
+    connect_io(interconnect, io_conn["in"], io_conn["out"], io_sides, give_north_io_sbs)
 
     # insert pipeline register
     if pipeline_reg is None:
@@ -181,22 +188,32 @@ def create_uniform_interconnect(width: int,
 
     return interconnect
 
-
+# This function connects tiles that are at the edge to nearby tiles in the 
+# appropriate direction (North, west, east, or south neighbor). Makes this 
+# connection in the interconnect graph. Actual magma connection is done in
+# a separate pass. 
 def connect_io(interconnect: InterconnectGraph,
                input_port_conn: Dict[str, List[int]],
                output_port_conn: Dict[str, List[int]],
-               io_sides: List[IOSide]):
+               io_sides: List[IOSide],
+               give_north_io_sbs: bool = False):
     """connect tiles on the side"""
     if IOSide.None_ in io_sides:
         return
 
     width, height = interconnect.get_size()
     x_min, x_max, y_min, y_max = get_array_size(width, height, io_sides)
+
+    interconnect_x_min = x_min
+    interconnect_x_max = x_max
+    interconnect_y_min = y_min-1 if give_north_io_sbs else y_min
+    interconnect_y_max = y_max
+
     # compute tiles and sides
     for x in range(width):
         for y in range(height):
-            if x in range(x_min, x_max + 1) and \
-                    y in range(y_min, y_max + 1):
+            if x in range(interconnect_x_min, interconnect_x_max + 1) and \
+                    y in range(interconnect_y_min, interconnect_y_max + 1):
                 continue
            
             # make sure that these margins tiles have empty switch boxes
