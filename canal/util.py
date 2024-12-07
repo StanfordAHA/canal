@@ -37,7 +37,9 @@ def compute_num_tracks(x_offset: int, y_offset: int,
 
 
 def get_array_size(width, height, io_sides):
-    x_min = 1 if IOSide.West in io_sides else 0
+    # MO Hack 
+    x_min = 0
+    #x_min = 1 if IOSide.West in io_sides else 0
     x_max = width - 2 if IOSide.East in io_sides else width - 1
     y_min = 1 if IOSide.North in io_sides else 0
     y_max = height - 2 if IOSide.South in io_sides else height - 1
@@ -98,7 +100,9 @@ def create_uniform_interconnect(width: int,
         io_sides = [IOSide.None_]
     x_min, x_max, y_min, y_max = get_array_size(width, height, io_sides)
 
-    interconnect_x_min = x_min
+
+    # MO: Hack 
+    interconnect_x_min = 4
     interconnect_x_max = x_max
     interconnect_y_min = y_min-1 if give_north_io_sbs else y_min
     interconnect_y_max = y_max
@@ -131,6 +135,44 @@ def create_uniform_interconnect(width: int,
                 additional_core_interface = CoreInterface(additional_core)
                 tile_circuit.add_additional_core(additional_core_interface,
                                                  CoreConnectionType.SB | CoreConnectionType.CB)
+
+    # Handle North I/O if giving north I/O SB, since some may have been skipped above
+    if give_north_io_sbs:
+        for x in range(x_min, x_max + 1):
+            for y in range(y_min):
+                # skip if the tiles is already created
+                tile = interconnect.get_tile(x, y)
+                if tile is not None:
+                    continue 
+                # compute the number of tracks
+                num_track = compute_num_tracks(x_min, y_min,
+                                            x, y, track_info)
+                # create switch based on the type passed in
+                if sb_type == SwitchBoxType.Disjoint:
+                    sb = DisjointSwitchBox(x, y, num_track, track_width)
+                elif sb_type == SwitchBoxType.Wilton:
+                    sb = WiltonSwitchBox(x, y, num_track, track_width)
+                elif sb_type == SwitchBoxType.Imran:
+                    sb = ImranSwitchBox(x, y, num_track, track_width)
+                else:
+                    raise NotImplementedError(sb_type)
+                tile_circuit = Tile(x, y, track_width, sb, tile_height)
+
+                interconnect.add_tile(tile_circuit)
+                core = column_core_fn(x, y)
+    
+                core_interface = CoreInterface(core)
+                interconnect.set_core(x, y, core_interface)
+
+                additional_core = additional_core_fn(x, y)
+                if additional_core is not None:
+                    additional_core_interface = CoreInterface(additional_core)
+                    tile_circuit.add_additional_core(additional_core_interface,
+                                                    CoreConnectionType.SB | CoreConnectionType.CB)
+
+                
+
+
 
     # create tiles without SB
     for x in range(width):
@@ -204,7 +246,9 @@ def connect_io(interconnect: InterconnectGraph,
     width, height = interconnect.get_size()
     x_min, x_max, y_min, y_max = get_array_size(width, height, io_sides)
 
-    interconnect_x_min = x_min
+    # MO: Hack 
+    #interconnect_x_min = x_min
+    interconnect_x_min = 4
     interconnect_x_max = x_max
     interconnect_y_min = y_min-1 if give_north_io_sbs else y_min
     interconnect_y_max = y_max
@@ -221,23 +265,29 @@ def connect_io(interconnect: InterconnectGraph,
 
             if tile.core.core is None:
                 continue
-            assert tile.switchbox.num_track == 0
+            #breakpoint()
+
+            # This means the tile isn't an I/O that needs to be connected using this function 
+            if tile.switchbox.num_track > 0:
+                continue 
+
+            print(f"X: {x}, Y: {y}")
+            #assert tile.switchbox.num_track == 0
             # compute the nearby tile
-            if x in range(0, x_min):
+            if x in range(0, interconnect_x_min):
                 next_tile = interconnect[(x + 1, y)]
                 side = SwitchBoxSide.WEST
-            elif x in range(x_max + 1, width):
+            elif x in range(interconnect_x_max + 1, width):
                 next_tile = interconnect[(x - 1, y)]
                 side = SwitchBoxSide.EAST
-            elif y in range(0, y_min):
+            elif y in range(0, interconnect_y_min):
                 next_tile = interconnect[(x, y + 1)]
                 side = SwitchBoxSide.NORTH
             else:
-                assert y in range(y_max + 1, height)
+                assert y in range(interconnect_y_max + 1, height)
                 next_tile = interconnect[(x, y - 1)]
                 side = SwitchBoxSide.SOUTH
             for input_port, conn in input_port_conn.items():
-                #breakpoint()
                 # input is from fabric to IO
                 if input_port in tile.ports:
                     port_node = tile.ports[input_port]

@@ -275,7 +275,6 @@ class Interconnect(generator.Generator):
         else:
             return tile.switchbox.num_track > 0
 
-    # FIXME: This is a hack. Why are io2f and f2io tiles ports in the first place? They shouldn't be... 
     def dont_lift_port(self, tile, port_name):
         # dont lift f2io and io2f ports to interconnect level since these connect to the SB within the I/O tile 
         return self.give_north_io_sbs and (tile.y == 0 and ("f2io" in port_name or "io2f" in port_name))
