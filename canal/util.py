@@ -37,9 +37,7 @@ def compute_num_tracks(x_offset: int, y_offset: int,
 
 
 def get_array_size(width, height, io_sides):
-    # MO Hack 
-    x_min = 0
-    #x_min = 1 if IOSide.West in io_sides else 0
+    x_min = 1 if IOSide.West in io_sides else 0
     x_max = width - 2 if IOSide.East in io_sides else width - 1
     y_min = 1 if IOSide.North in io_sides else 0
     y_max = height - 2 if IOSide.South in io_sides else height - 1
@@ -207,8 +205,18 @@ def create_uniform_interconnect(width: int,
     current_track = 0
     for track_len in track_lens:
         for _ in range(track_info[track_len]):
+
+            # This function connects neighboring switchboxes to each other (North, south east, west)
+            # MO: HACK: try doing in two passes 
             interconnect.connect_switchbox(interconnect_x_min, interconnect_y_min, interconnect_x_max,
                                            interconnect_y_max,
+                                           track_len,
+                                           current_track,
+                                           InterconnectPolicy.Ignore)
+
+            # For unconnected I/O tiles 
+            interconnect.connect_switchbox(x_min, interconnect_y_min, interconnect_x_max,
+                                           interconnect_y_min,
                                            track_len,
                                            current_track,
                                            InterconnectPolicy.Ignore)
