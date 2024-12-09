@@ -59,6 +59,7 @@ def create_uniform_interconnect(width: int,
                                 io_sides: List[IOSide] = [IOSide.None_],
                                 io_conn: Dict[str, Dict[str, List[int]]] = None,
                                 give_north_io_sbs: bool = False,
+                                num_fabric_cols_removed: int = 0,
                                 additional_core_fn: Callable[[int, int], Core] = lambda _, __: None,
                                 inter_core_connection: Dict[str, List[str]] = None
                                 ) -> InterconnectGraph:
@@ -98,9 +99,7 @@ def create_uniform_interconnect(width: int,
         io_sides = [IOSide.None_]
     x_min, x_max, y_min, y_max = get_array_size(width, height, io_sides)
 
-
-    # MO: Hack 
-    interconnect_x_min = 4
+    interconnect_x_min = num_fabric_cols_removed if num_fabric_cols_removed > 0 else x_min
     interconnect_x_max = x_max
     interconnect_y_min = y_min-1 if give_north_io_sbs else y_min
     interconnect_y_max = y_max
@@ -134,7 +133,7 @@ def create_uniform_interconnect(width: int,
                 tile_circuit.add_additional_core(additional_core_interface,
                                                  CoreConnectionType.SB | CoreConnectionType.CB)
 
-    # Handle North I/O if giving north I/O SB, since some may have been skipped above
+    # Handle North I/O if giving north I/O SB, since some may have been skipped above due to num_fabric_cols_removed
     if give_north_io_sbs:
         for x in range(x_min, x_max + 1):
             for y in range(y_min):
@@ -167,10 +166,6 @@ def create_uniform_interconnect(width: int,
                     additional_core_interface = CoreInterface(additional_core)
                     tile_circuit.add_additional_core(additional_core_interface,
                                                     CoreConnectionType.SB | CoreConnectionType.CB)
-
-                
-
-
 
     # create tiles without SB
     for x in range(width):
@@ -207,23 +202,24 @@ def create_uniform_interconnect(width: int,
         for _ in range(track_info[track_len]):
 
             # This function connects neighboring switchboxes to each other (North, south east, west)
-            # MO: HACK: try doing in two passes 
+            # Pass 1: Contiguous tile array fabric 
             interconnect.connect_switchbox(interconnect_x_min, interconnect_y_min, interconnect_x_max,
                                            interconnect_y_max,
                                            track_len,
                                            current_track,
                                            InterconnectPolicy.Ignore)
 
-            # For unconnected I/O tiles 
-            interconnect.connect_switchbox(x_min, interconnect_y_min, interconnect_x_max,
-                                           interconnect_y_min,
-                                           track_len,
-                                           current_track,
-                                           InterconnectPolicy.Ignore)
+             # (Optional) Pass 2: For any unconnected I/O tiles due to "num_fabric_cols_removed" > 0
+            if give_north_io_sbs and num_fabric_cols_removed > 0:
+                interconnect.connect_switchbox(x_min, interconnect_y_min, interconnect_x_max,
+                                            interconnect_y_min,
+                                            track_len,
+                                            current_track,
+                                            InterconnectPolicy.Ignore)
             current_track += 1
 
     # insert io
-    connect_io(interconnect, io_conn["in"], io_conn["out"], io_sides, give_north_io_sbs)
+    connect_io(interconnect, io_conn["in"], io_conn["out"], io_sides, give_north_io_sbs, num_fabric_cols_removed)
 
     # insert pipeline register
     if pipeline_reg is None:
@@ -246,7 +242,8 @@ def connect_io(interconnect: InterconnectGraph,
                input_port_conn: Dict[str, List[int]],
                output_port_conn: Dict[str, List[int]],
                io_sides: List[IOSide],
-               give_north_io_sbs: bool = False):
+               give_north_io_sbs: bool = False,
+               num_fabric_cols_removed: int = 0):
     """connect tiles on the side"""
     if IOSide.None_ in io_sides:
         return
@@ -254,9 +251,7 @@ def connect_io(interconnect: InterconnectGraph,
     width, height = interconnect.get_size()
     x_min, x_max, y_min, y_max = get_array_size(width, height, io_sides)
 
-    # MO: Hack 
-    #interconnect_x_min = x_min
-    interconnect_x_min = 4
+    interconnect_x_min = num_fabric_cols_removed if num_fabric_cols_removed > 0 else x_min
     interconnect_x_max = x_max
     interconnect_y_min = y_min-1 if give_north_io_sbs else y_min
     interconnect_y_max = y_max
@@ -273,14 +268,12 @@ def connect_io(interconnect: InterconnectGraph,
 
             if tile.core.core is None:
                 continue
-            #breakpoint()
 
             # This means the tile isn't an I/O that needs to be connected using this function 
             if tile.switchbox.num_track > 0:
                 continue 
-
-            print(f"X: {x}, Y: {y}")
             #assert tile.switchbox.num_track == 0
+
             # compute the nearby tile
             if x in range(0, interconnect_x_min):
                 next_tile = interconnect[(x + 1, y)]
