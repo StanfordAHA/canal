@@ -625,7 +625,8 @@ class TileCircuit(GemstoneGenerator):
                  full_config_addr_width: int = 32,
                  stall_signal_width: int = 4,
                  double_buffer: bool = False,
-                 ready_valid: bool = False):
+                 ready_valid: bool = False,
+                 give_north_io_sbs: bool = False):
         super().__init__()
 
         # turn off hashing because we controls that hashing here
@@ -700,6 +701,44 @@ class TileCircuit(GemstoneGenerator):
         for bit_width, tile in self.tiles.items():
             # connection box time
             for port_name, port_node in tile.ports.items():
+
+                if give_north_io_sbs:
+                    # Lift up if io2glb or glb2io port (and skip the rest i.e., adding SB and CB connections)
+                    if "glb2io" in port_name:
+                        ready_port_name = port_name + "_ready"
+                        valid_port_name = port_name + "_valid"
+
+                        core_port = self.__get_port(port_name)
+                        core_ready_port = self.__get_port(ready_port_name)
+                        core_valid_port = self.__get_port(valid_port_name)
+
+                        self.add_port(port_name, magma.In(core_port.base_type()))
+                        self.add_port(valid_port_name, magma.In(magma.Bit))
+                        self.add_port(ready_port_name, magma.Out(magma.Bit))
+
+                        self.wire(self.ports[port_name], core_port)
+                        self.wire(self.convert(self.ports[valid_port_name], magma.Bits[1]), core_valid_port)
+                        self.wire(self.convert(core_ready_port, magma.bit), self.ports[ready_port_name])
+
+                        continue 
+
+                    if "io2glb" in port_name:
+                        ready_port_name = port_name + "_ready"
+                        valid_port_name = port_name + "_valid"
+
+                        core_port = self.__get_port(port_name)
+                        core_ready_port = self.__get_port(ready_port_name)
+                        core_valid_port = self.__get_port(valid_port_name)
+
+                        self.add_port(port_name, magma.Out(core_port.base_type()))
+                        self.add_port(valid_port_name, magma.Out(magma.Bit))
+                        self.add_port(ready_port_name, magma.In(magma.Bit))
+
+                        self.wire(core_port, self.ports[port_name])
+                        self.wire(self.convert(core_valid_port, magma.bit), self.ports[valid_port_name])
+                        self.wire(self.convert(self.ports[ready_port_name], magma.Bits[1]), core_ready_port)
+                        continue
+                    
                 # input ports
                 if len(port_node) == 0:
                     assert bit_width == port_node.width

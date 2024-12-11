@@ -25,7 +25,8 @@ class Interconnect(generator.Generator):
                  stall_signal_width: int = 4,
                  lift_ports=False,
                  double_buffer: bool = False,
-                 ready_valid: bool = False):
+                 ready_valid: bool = False,
+                 give_north_io_sbs: bool = False):
         super().__init__()
 
         self.__interface = {}
@@ -42,6 +43,8 @@ class Interconnect(generator.Generator):
 
         self.double_buffer = double_buffer
         self.ready_valid = ready_valid
+
+        self.give_north_io_sbs = give_north_io_sbs
 
         # loop through the grid and create tile circuits
         # first find all the coordinates
@@ -84,7 +87,8 @@ class Interconnect(generator.Generator):
                 TileCircuit(tiles, config_addr_width, config_data_width,
                             stall_signal_width=stall_signal_width,
                             double_buffer=self.double_buffer,
-                            ready_valid=self.ready_valid)
+                            ready_valid=self.ready_valid,
+                            give_north_io_sbs=self.give_north_io_sbs)
 
         # we need to deal with inter-tile connections now
         # we only limit mesh
@@ -264,15 +268,29 @@ class Interconnect(generator.Generator):
                             self.wire(p, tile.ports[sb_name + "_ready"])
                             self.__interface[ready_name] = sb_port
 
+
+    def skip_margin_connection(self, tile):
+        if self.give_north_io_sbs:
+            return tile.switchbox.num_track > 0 and tile.y != 0
+        else:
+            return tile.switchbox.num_track > 0
+
+    def dont_lift_port(self, tile, port_name):
+        # dont lift f2io and io2f ports to interconnect level since these connect to the SB within the I/O tile 
+        return self.give_north_io_sbs and (tile.y == 0 and ("f2io" in port_name or "io2f" in port_name))
+
+    # This function makes the tile-to-tile connection for the margin tiles
+    # And lifts up ports at the "edge" of the Interconnect graph as ports for the
+    # Interconnect module 
     def __connect_margin_tiles(self):
         # connect these margin tiles
         # margin tiles have empty switchbox
         for coord, tile_dict in self.__tiles.items():
             for bit_width, tile in tile_dict.items():
-                if tile.switchbox.num_track > 0 or tile.core is None:
+                if self.skip_margin_connection(tile) or tile.core is None:
                     continue
                 for port_name, port_node in tile.ports.items():
-                    if port_name == "flush":
+                    if port_name == "flush" or self.dont_lift_port(tile, port_name):
                         continue
                     tile_port = self.tile_circuits[coord].ports[port_name]
                     # FIXME: this is a hack
@@ -697,8 +715,6 @@ class Interconnect(generator.Generator):
         elif node_str[0] == "REG":
             reg_name, track, x, y, bit_width = node_str[1:]
             graph = self.get_graph(bit_width)
-            if reg_name not in graph.get_tile(x, y).switchbox.registers:
-                breakpoint()
             return graph.get_tile(x, y).switchbox.registers[reg_name]
         elif node_str[0] == "RMUX":
             rmux_name, x, y, bit_width = node_str[1:]
@@ -719,7 +735,8 @@ class Interconnect(generator.Generator):
                           self.tile_id_width,
                           self.stall_signal_width,
                           self.__lifted_ports,
-                          double_buffer=self.double_buffer)
+                          double_buffer=self.double_buffer,
+                          give_north_io_sbs=self.give_north_io_sbs)
         return ic
 
     def get_column(self, x: int):
