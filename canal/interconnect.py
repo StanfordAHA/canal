@@ -544,7 +544,8 @@ class Interconnect(generator.Generator):
 
         return result
 
-    def configure_placement(self, x: int, y: int, instr, pnr_tag=None):
+    def configure_placement(self, x: int, y: int, instr, pnr_tag=None, node_num=None, active_core_ports=None):
+        instance_name = f"{pnr_tag}{node_num}"
         tile = self.tile_circuits[(x, y)]
         core_: ConfigurableCore = None
         result = None
@@ -563,7 +564,10 @@ class Interconnect(generator.Generator):
                     tags = [tags]
                 for tag in tags:
                     if tag.tag_name == pnr_tag:
-                        result = core.get_config_bitstream(instr)
+                        if 'P' in pnr_tag or 'p' in pnr_tag:
+                            result = core.get_config_bitstream([instr, active_core_ports[instance_name]])
+                        else:
+                            result = core.get_config_bitstream(instr)
                         has_configured = True
                         core_ = core
                         break
@@ -825,3 +829,4 @@ class Interconnect(generator.Generator):
 
     def name(self):
         return "Interconnect"
+
