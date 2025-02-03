@@ -1,7 +1,7 @@
 from gemstone.common.core import Core
 from typing import Tuple, List, Dict, Callable
 from .cyclone import SwitchBoxSide, SwitchBoxIO, InterconnectPolicy, \
-    InterconnectGraph, DisjointSwitchBox, WiltonSwitchBox, \
+    InterconnectGraph, DisjointSwitchBox, WiltonSwitchBox, TallWiltonSwitchBox, \
     ImranSwitchBox, Tile, SwitchBox, CoreConnectionType
 from .circuit import CoreInterface
 import enum
@@ -119,7 +119,14 @@ def create_uniform_interconnect(width: int,
                 sb = ImranSwitchBox(x, y, num_track, track_width)
             else:
                 raise NotImplementedError(sb_type)
+            
             tile_circuit = Tile(x, y, track_width, sb, tile_height)
+
+            # MO: TALL SB HACK
+            if y == y_min-1:
+                num_horizontal_track = 16
+                sb = TallWiltonSwitchBox(x, y, num_track, num_horizontal_track, track_width)
+                tile_circuit = Tile(x, y, track_width, sb, tile_height, isTallTile=True)
 
             interconnect.add_tile(tile_circuit)
             core = column_core_fn(x, y)
@@ -145,15 +152,21 @@ def create_uniform_interconnect(width: int,
                 num_track = compute_num_tracks(x_min, y_min,
                                             x, y, track_info)
                 # create switch based on the type passed in
-                if sb_type == SwitchBoxType.Disjoint:
-                    sb = DisjointSwitchBox(x, y, num_track, track_width)
-                elif sb_type == SwitchBoxType.Wilton:
-                    sb = WiltonSwitchBox(x, y, num_track, track_width)
-                elif sb_type == SwitchBoxType.Imran:
-                    sb = ImranSwitchBox(x, y, num_track, track_width)
-                else:
-                    raise NotImplementedError(sb_type)
-                tile_circuit = Tile(x, y, track_width, sb, tile_height)
+
+                # MO: TALL SB HACK
+                # if sb_type == SwitchBoxType.Disjoint:
+                #     sb = DisjointSwitchBox(x, y, num_track, track_width)
+                # elif sb_type == SwitchBoxType.Wilton:
+                #     sb = WiltonSwitchBox(x, y, num_track, track_width)
+                # elif sb_type == SwitchBoxType.Imran:
+                #     sb = ImranSwitchBox(x, y, num_track, track_width)
+                # else:
+                #     raise NotImplementedError(sb_type)
+                
+                # MO: TALL SB HACK
+                num_horizontal_track = 16
+                sb = TallWiltonSwitchBox(x, y, num_track, num_horizontal_track, track_width)
+                tile_circuit = Tile(x, y, track_width, sb, tile_height, isTallTile=True)
 
                 interconnect.add_tile(tile_circuit)
                 core = column_core_fn(x, y)
@@ -188,7 +201,13 @@ def create_uniform_interconnect(width: int,
     port_names.sort()
     for port_name in port_names:
         conns = port_connections[port_name]
-        interconnect.set_core_connection_all(port_name, conns)
+
+        # MO: TALL SB HACK
+        # TODO: Add AND include_tall here 
+        if "f2io" in port_name or "io2f" in port_name:
+            interconnect.set_core_connection_all(port_name, conns, includeTallConnections=True)
+        else:
+            interconnect.set_core_connection_all(port_name, conns)
 
     if inter_core_connection is not None:
         interconnect.set_inter_core_connection(inter_core_connection)
@@ -200,7 +219,6 @@ def create_uniform_interconnect(width: int,
     current_track = 0
     for track_len in track_lens:
         for _ in range(track_info[track_len]):
-
             # This function connects neighboring switchboxes to each other (North, south east, west)
             # Pass 1: Contiguous tile array fabric 
             interconnect.connect_switchbox(interconnect_x_min, interconnect_y_min, interconnect_x_max,
@@ -217,6 +235,17 @@ def create_uniform_interconnect(width: int,
                                             current_track,
                                             InterconnectPolicy.Ignore)
             current_track += 1
+
+    # MO: TALL SB HACK
+    # Add AND useTallSBs to this 
+    if give_north_io_sbs and num_fabric_cols_removed > 0:
+        for current_track in range(5, 16):
+            interconnect.connect_switchbox(x_min, interconnect_y_min, interconnect_x_max,
+                                                interconnect_y_min,
+                                                track_len,
+                                                current_track,
+                                                InterconnectPolicy.Ignore, isTallConnection=True)
+
 
     # insert io
     connect_io(interconnect, io_conn["in"], io_conn["out"], io_sides, give_north_io_sbs, num_fabric_cols_removed)

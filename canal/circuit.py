@@ -404,6 +404,9 @@ class SB(InterconnectConfigurable):
                         assert node.x == sb.x and node.y == sb.y
                         output_port = mux.ports.O
                         idx = node.get_conn_in().index(sb)
+                        #breakpoint()
+                        # if str(node) == "SB_T5_WEST_SB_OUT_B1":
+                        #     breakpoint()
                         node_, node_mux = self.sb_muxs[str(node)]
                         assert node_ == node
                         input_port = node_mux.ports.I[idx]
@@ -701,7 +704,6 @@ class TileCircuit(GemstoneGenerator):
         for bit_width, tile in self.tiles.items():
             # connection box time
             for port_name, port_node in tile.ports.items():
-
                 if give_north_io_sbs:
                     # Lift up if io2glb or glb2io port (and skip the rest i.e., adding SB and CB connections)
                     if "glb2io" in port_name:
