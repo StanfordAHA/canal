@@ -328,7 +328,10 @@ class SwitchBox:
         return True
 
     def __repr__(self):
-        return f"SWITCH {self.width} {self.id} {self.num_track}"
+        if self.isTall:
+            return f"TALLSWITCH {self.width} {self.id} {self.num_track} {self.num_horizontal_track}"
+        else:
+            return f"SWITCH {self.width} {self.id} {self.num_track}"
 
     def __getitem__(self, item: Tuple[SwitchBoxSide, int, SwitchBoxIO]):
         if not isinstance(item, tuple):
@@ -706,6 +709,7 @@ class Tile:
         self.y = y
         self.track_width = track_width
         self.height = height
+        self.isTallTile = isTallTile
 
         # create a copy of switch box because the switchbox nodes have to be
         # created
@@ -961,12 +965,13 @@ class InterconnectGraph:
 
     def set_core_connection_all(self, port_name: str,
                                 connection_type: List[Tuple[SwitchBoxSide,
-                                                            SwitchBoxIO]], includeTallConnections: bool = False):
+                                                            SwitchBoxIO]]):
         """helper function to set connections for all the tiles with the
         same port_name"""
         for (x, y), tile in self.__tiles.items():
             # construct the connection types
             switch = tile.switchbox
+            includeTallConnections = tile.isTallTile
             num_track = switch.num_track
             connections: List[SBConnectionType] = []
             for side, io in connection_type:

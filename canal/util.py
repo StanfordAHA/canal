@@ -201,13 +201,8 @@ def create_uniform_interconnect(width: int,
     port_names.sort()
     for port_name in port_names:
         conns = port_connections[port_name]
+        interconnect.set_core_connection_all(port_name, conns)
 
-        # MO: TALL SB HACK
-        # TODO: Add AND include_tall here 
-        if "f2io" in port_name or "io2f" in port_name:
-            interconnect.set_core_connection_all(port_name, conns, includeTallConnections=True)
-        else:
-            interconnect.set_core_connection_all(port_name, conns)
 
     if inter_core_connection is not None:
         interconnect.set_inter_core_connection(inter_core_connection)
@@ -253,13 +248,20 @@ def create_uniform_interconnect(width: int,
     # insert pipeline register
     if pipeline_reg is None:
         pipeline_reg = []
-    for track, side in pipeline_reg:
-        for coord in interconnect:
-            tile = interconnect[coord]
+    for coord in interconnect:
+        tile = interconnect[coord]
+
+        pipeline_regs_to_add = pipeline_reg.copy()
+        if tile.isTallTile:
+            for track in range(tile.switchbox.num_track, tile.switchbox.num_horizontal_track):
+                pipeline_regs_to_add.append((track, SwitchBoxSide.WEST))
+                pipeline_regs_to_add.append((track, SwitchBoxSide.EAST))
+        
+        for track, side in pipeline_regs_to_add:
             if tile.switchbox is None or tile.switchbox.num_track == 0:
                 continue
-            if track < tile.switchbox.num_track:
-                tile.switchbox.add_pipeline_register(side, track)
+            # if track < num_tracks_to_loop_over:
+            tile.switchbox.add_pipeline_register(side, track)
 
     return interconnect
 
