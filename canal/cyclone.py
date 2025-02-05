@@ -328,10 +328,7 @@ class SwitchBox:
         return True
 
     def __repr__(self):
-        if self.isTall:
-            return f"TALLSWITCH {self.width} {self.id} {self.num_track} {self.num_horizontal_track}"
-        else:
-            return f"SWITCH {self.width} {self.id} {self.num_track}"
+        return f"SWITCH {self.width} {self.id} {self.num_track} {self.num_horizontal_track}"
 
     def __getitem__(self, item: Tuple[SwitchBoxSide, int, SwitchBoxIO]):
         if not isinstance(item, tuple):
