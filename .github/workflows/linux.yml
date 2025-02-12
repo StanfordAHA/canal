@@ -10,26 +10,42 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+    
     - name: Checkout submodules
       shell: bash
       run: |
         auth_header="$(git config --local --get http.https://github.com/.extraheader)"
         git submodule sync --recursive
         git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
+    
     - name: Pull and run docker 🐋 
       shell: bash
+      env:
+        GITHUB_REF: ${{ github.ref }}
+        GITHUB_SHA: ${{ github.sha }}
       run: |
         docker pull stanfordaha/garnet:latest
-        docker run -d --name garnet_container --rm -it stanfordaha/garnet:latest bash
+        docker run -d --name garnet_container --rm -it \
+          -e GITHUB_REF="${GITHUB_REF}" \
+          -e GITHUB_SHA="${GITHUB_SHA}" \
+          stanfordaha/garnet:latest bash
+
     - name: Install deps 🛠️
       shell: bash
       run: |
         docker exec -i garnet_container bash -c '
-            git config --global --add safe.directory /aha/canal
             set -e
+            git config --global --add safe.directory /aha/canal
             cd /aha/canal
-            CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-            git checkout "$CURRENT_BRANCH"
+            # If the ref is a branch (refs/heads/...), extract its name and check it out
+            if [[ "$GITHUB_REF" == refs/heads/* ]]; then
+              BRANCH="${GITHUB_REF##refs/heads/}"
+              git fetch origin "$BRANCH"
+              git checkout "$BRANCH"
+            else
+              # Otherwise, fallback to the commit SHA
+              git checkout "$GITHUB_SHA"
+            fi
         '
         docker exec -i garnet_container bash -c "pip install -r /aha/canal/requirements.txt"
         docker exec -i garnet_container bash -c "pip install -e /aha/canal"
