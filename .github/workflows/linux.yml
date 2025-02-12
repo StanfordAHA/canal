@@ -19,16 +19,27 @@ jobs:
     - name: Pull and run docker 🐋 
       shell: bash
       run: |
-        docker pull keyiz/garnet-flow
-        docker run -it -d --name canal --mount type=bind,source="$(pwd)"/../canal,target=/canal keyiz/garnet-flow bash
+        docker pull stanfordaha/garnet:latest
+        docker run -d --name garnet_container --rm -it stanfordaha/garnet:latest bash
     - name: Install deps 🛠️
       shell: bash
       run: |
-        docker exec -i canal bash -c "pip install -r /canal/requirements.txt"
-        docker exec -i canal bash -c "pip install -e /canal"
-        docker exec -i canal bash -c "pip install pytest==7.1.1 python-coveralls"
-        docker exec -i canal bash -c "pip install pytest-cov pytest-pycodestyle"
-    - name: Run tests ⚙️
+        docker exec -i garnet_container bash -c '
+            git config --global --add safe.directory /aha/canal
+            set -e
+            cd /aha/canal
+            CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+            git checkout "$CURRENT_BRANCH"
+        '
+        docker exec -i garnet_container bash -c "pip install -r /aha/canal/requirements.txt"
+        docker exec -i garnet_container bash -c "pip install -e /aha/canal"
+
+    - name: Run pointwise test ⚙️
       shell: bash
       run: |
-        docker exec -i canal bash -c 'canal/.github/scripts/run.sh'
+        docker exec -i garnet_container bash -c '
+            set -e
+            source /aha/bin/activate
+            aha map apps/pointwise
+            aha pnr apps/pointwise --width 4 --height 4
+        '
