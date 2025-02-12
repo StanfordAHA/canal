@@ -1,7 +1,7 @@
 from gemstone.common.core import Core
 from typing import Tuple, List, Dict, Callable
 from .cyclone import SwitchBoxSide, SwitchBoxIO, InterconnectPolicy, \
-    InterconnectGraph, DisjointSwitchBox, WiltonSwitchBox, \
+    InterconnectGraph, DisjointSwitchBox, WiltonSwitchBox, TallWiltonSwitchBox, TallImranSwitchBox, \
     ImranSwitchBox, Tile, SwitchBox, CoreConnectionType
 from .circuit import CoreInterface
 import enum
@@ -59,6 +59,8 @@ def create_uniform_interconnect(width: int,
                                 io_sides: List[IOSide] = [IOSide.None_],
                                 io_conn: Dict[str, Dict[str, List[int]]] = None,
                                 give_north_io_sbs: bool = False,
+                                tall_north_io_sbs: bool = True,
+                                num_tall_sb_horizontal_tracks: int = 16,
                                 num_fabric_cols_removed: int = 0,
                                 additional_core_fn: Callable[[int, int], Core] = lambda _, __: None,
                                 inter_core_connection: Dict[str, List[str]] = None
@@ -106,7 +108,7 @@ def create_uniform_interconnect(width: int,
 
     # create tiles and set cores
     for x in range(interconnect_x_min, interconnect_x_max + 1):
-        for y in range(interconnect_y_min, interconnect_y_max + 1, tile_height):
+        for y in range(y_min, interconnect_y_max + 1, tile_height):
             # compute the number of tracks
             num_track = compute_num_tracks(x_min, y_min,
                                            x, y, track_info)
@@ -119,6 +121,7 @@ def create_uniform_interconnect(width: int,
                 sb = ImranSwitchBox(x, y, num_track, track_width)
             else:
                 raise NotImplementedError(sb_type)
+            
             tile_circuit = Tile(x, y, track_width, sb, tile_height)
 
             interconnect.add_tile(tile_circuit)
@@ -133,7 +136,7 @@ def create_uniform_interconnect(width: int,
                 tile_circuit.add_additional_core(additional_core_interface,
                                                  CoreConnectionType.SB | CoreConnectionType.CB)
 
-    # Handle North I/O if giving north I/O SB, since some may have been skipped above due to num_fabric_cols_removed
+    # Handle North I/O if giving north I/O SB
     if give_north_io_sbs:
         for x in range(x_min, x_max + 1):
             for y in range(y_min):
@@ -146,14 +149,26 @@ def create_uniform_interconnect(width: int,
                                             x, y, track_info)
                 # create switch based on the type passed in
                 if sb_type == SwitchBoxType.Disjoint:
+                    if tall_north_io_sbs:
+                        raise NotImplementedError("Tall SBs not yet implemented for Disjoint SBs")
                     sb = DisjointSwitchBox(x, y, num_track, track_width)
+
                 elif sb_type == SwitchBoxType.Wilton:
-                    sb = WiltonSwitchBox(x, y, num_track, track_width)
+                    if tall_north_io_sbs:
+                        sb = TallWiltonSwitchBox(x, y, num_track, num_tall_sb_horizontal_tracks, track_width)
+                    else:
+                        sb = WiltonSwitchBox(x, y, num_track, track_width)
+
                 elif sb_type == SwitchBoxType.Imran:
-                    sb = ImranSwitchBox(x, y, num_track, track_width)
+                    if tall_north_io_sbs:
+                        sb = TallImranSwitchBox(x, y, num_track, num_tall_sb_horizontal_tracks, track_width)
+                    else:
+                        sb = ImranSwitchBox(x, y, num_track, track_width)
+
                 else:
                     raise NotImplementedError(sb_type)
-                tile_circuit = Tile(x, y, track_width, sb, tile_height)
+                
+                tile_circuit = Tile(x, y, track_width, sb, tile_height, isTallTile=tall_north_io_sbs)
 
                 interconnect.add_tile(tile_circuit)
                 core = column_core_fn(x, y)
@@ -190,6 +205,7 @@ def create_uniform_interconnect(width: int,
         conns = port_connections[port_name]
         interconnect.set_core_connection_all(port_name, conns)
 
+
     if inter_core_connection is not None:
         interconnect.set_inter_core_connection(inter_core_connection)
 
@@ -200,7 +216,6 @@ def create_uniform_interconnect(width: int,
     current_track = 0
     for track_len in track_lens:
         for _ in range(track_info[track_len]):
-
             # This function connects neighboring switchboxes to each other (North, south east, west)
             # Pass 1: Contiguous tile array fabric 
             interconnect.connect_switchbox(interconnect_x_min, interconnect_y_min, interconnect_x_max,
@@ -218,19 +233,36 @@ def create_uniform_interconnect(width: int,
                                             InterconnectPolicy.Ignore)
             current_track += 1
 
+    # connect the tall switchboxes if they exist 
+    if give_north_io_sbs and tall_north_io_sbs:
+        for current_track in range(num_track, num_tall_sb_horizontal_tracks):
+            interconnect.connect_switchbox(x_min, interconnect_y_min, interconnect_x_max,
+                                                interconnect_y_min,
+                                                track_len,
+                                                current_track,
+                                                InterconnectPolicy.Ignore, isTallConnection=True)
+
+
     # insert io
     connect_io(interconnect, io_conn["in"], io_conn["out"], io_sides, give_north_io_sbs, num_fabric_cols_removed)
 
     # insert pipeline register
     if pipeline_reg is None:
         pipeline_reg = []
-    for track, side in pipeline_reg:
-        for coord in interconnect:
-            tile = interconnect[coord]
+    for coord in interconnect:
+        tile = interconnect[coord]
+
+        pipeline_regs_to_add = pipeline_reg.copy()
+        if tile.isTallTile:
+            for track in range(tile.switchbox.num_track, tile.switchbox.num_horizontal_track):
+                pipeline_regs_to_add.append((track, SwitchBoxSide.WEST))
+                pipeline_regs_to_add.append((track, SwitchBoxSide.EAST))
+        
+        for track, side in pipeline_regs_to_add:
             if tile.switchbox is None or tile.switchbox.num_track == 0:
                 continue
-            if track < tile.switchbox.num_track:
-                tile.switchbox.add_pipeline_register(side, track)
+            # if track < num_tracks_to_loop_over:
+            tile.switchbox.add_pipeline_register(side, track)
 
     return interconnect
 

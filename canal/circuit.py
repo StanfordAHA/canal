@@ -701,7 +701,6 @@ class TileCircuit(GemstoneGenerator):
         for bit_width, tile in self.tiles.items():
             # connection box time
             for port_name, port_node in tile.ports.items():
-
                 if give_north_io_sbs:
                     # Lift up if io2glb or glb2io port (and skip the rest i.e., adding SB and CB connections)
                     if "glb2io" in port_name:

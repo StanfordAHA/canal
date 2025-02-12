@@ -8,6 +8,7 @@ import enum
 from typing import List, Tuple, Dict, Union, NamedTuple, Iterator, Set
 from ordered_set import OrderedSet
 from abc import abstractmethod
+from collections import defaultdict
 
 
 MAX_DEFAULT_DELAY = 100000
@@ -227,27 +228,70 @@ class RegisterMuxNode(Node):
 class SwitchBox:
     def __init__(self, x: int, y: int, num_track: int, width: int,
                  internal_wires: List[Tuple[int, SwitchBoxSide,
-                                            int, SwitchBoxSide]]):
+                                            int, SwitchBoxSide]], num_horizontal_track: int = 0, isTall: bool = False):
         self.x = x
         self.y = y
         self.width = width
 
+        self.isTall = isTall
+
         self.num_track = num_track
+        if not(isTall):
+            assert num_horizontal_track == 0, "ERROR: Only Tall switchboxes can have num_horziontal_track passed as an argument"
+        self.num_horizontal_track = num_horizontal_track if isTall else num_track
+
         self.internal_wires = internal_wires
 
         self.id = 0
 
-        self.__sbs: List[List[List[SwitchBoxNode]]] = \
-            [[[None for _ in range(self.num_track)]
-              for _ in SwitchBoxIO] for _ in SwitchBoxSide]
+        if isTall:
+            self.__sbs: List[List[List[SwitchBoxNode]]] = []
+            for side in SwitchBoxSide:
+                self.__sbs.append([])
 
-        # construct the internal connections
-        for side in SwitchBoxSide:
+            for side in SwitchBoxSide:
+                side_list = []
+                if ((side == SwitchBoxSide.WEST) or (side == SwitchBoxSide.EAST)):
+                    num_tracks_to_loop_over = self.num_horizontal_track
+                else:
+                    num_tracks_to_loop_over = self.num_track
+                for _ in SwitchBoxIO:
+                    io_list = []
+                    for _ in range(num_tracks_to_loop_over):
+                        io_list.append(None)
+                    side_list.append(io_list)
+                self.__sbs[side.value] = side_list
+        
+            # construct the internal connections
+            for side in SwitchBoxSide:
+                for io in SwitchBoxIO:
+                    for track in range(self.num_track):
+                        node = SwitchBoxNode(self.x, self.y, track, width,
+                                            side, io)
+                        self.__sbs[side.value][io.value][track] = node
+            
+            # Extra horizontal tracks
             for io in SwitchBoxIO:
-                for track in range(self.num_track):
-                    node = SwitchBoxNode(self.x, self.y, track, width,
-                                         side, io)
-                    self.__sbs[side.value][io.value][track] = node
+                for track in range(self.num_track, self.num_horizontal_track):
+                    east_node = SwitchBoxNode(self.x, self.y, track, width,
+                                            SwitchBoxSide.EAST, io)
+                    west_node = SwitchBoxNode(self.x, self.y, track, width,
+                                            SwitchBoxSide.WEST, io)
+                    self.__sbs[SwitchBoxSide.EAST.value][io.value][track] = east_node
+                    self.__sbs[SwitchBoxSide.WEST.value][io.value][track] = west_node
+
+        else:
+            self.__sbs: List[List[List[SwitchBoxNode]]] = \
+                [[[None for _ in range(self.num_track)]
+                for _ in SwitchBoxIO] for _ in SwitchBoxSide]
+
+            # construct the internal connections
+            for side in SwitchBoxSide:
+                for io in SwitchBoxIO:
+                    for track in range(self.num_track):
+                        node = SwitchBoxNode(self.x, self.y, track, width,
+                                            side, io)
+                        self.__sbs[side.value][io.value][track] = node
 
         # assign internal wiring
         # the order is in -> out
@@ -279,7 +323,7 @@ class SwitchBox:
         return True
 
     def __repr__(self):
-        return f"SWITCH {self.width} {self.id} {self.num_track}"
+        return f"SWITCH {self.width} {self.id} {self.num_track} {self.num_horizontal_track}"
 
     def __getitem__(self, item: Tuple[SwitchBoxSide, int, SwitchBoxIO]):
         if not isinstance(item, tuple):
@@ -292,11 +336,17 @@ class SwitchBox:
             raise ValueError(item[-1])
         side, track, io = item
         return self.__sbs[side.value][io.value][track]
-
+    
     def get_all_sbs(self) -> List[SwitchBoxNode]:
         result = []
-        for track in range(self.num_track):
-            for side in SwitchBoxSide:
+        for side in SwitchBoxSide:
+            num_tracks_to_loop_over = self.num_track
+
+            if self.isTall:
+                if side == SwitchBoxSide.EAST or side == SwitchBoxSide.WEST:
+                    num_tracks_to_loop_over = self.num_horizontal_track
+
+            for track in range(num_tracks_to_loop_over):
                 for io in SwitchBoxIO:
                     sb = self.get_sb(side, track, io)
                     if sb is not None:
@@ -396,7 +446,6 @@ class SwitchBox:
 
         return switchbox
 
-
 # helper class
 class DisjointSwitchBox(SwitchBox):
     def __init__(self, x: int, y: int, num_track: int, width: int):
@@ -409,6 +458,11 @@ class WiltonSwitchBox(SwitchBox):
         internal_wires = SwitchBoxHelper.get_wilton_sb_wires(num_track)
         super().__init__(x, y, num_track, width, internal_wires)
 
+class TallWiltonSwitchBox(SwitchBox):
+    def __init__(self, x: int, y: int, num_track: int, num_horizontal_track: int, width: int):
+        internal_wires = SwitchBoxHelper.get_tall_wilton_sb_wires(num_track, num_horizontal_track)
+        super().__init__(x, y, num_track, width, internal_wires, num_horizontal_track, isTall=True)
+
 
 class ImranSwitchBox(SwitchBox):
     def __init__(self, x: int, y: int, num_track: int, width: int):
@@ -419,6 +473,17 @@ class ImranSwitchBox(SwitchBox):
             # even number of tracks
             internal_wires = SwitchBoxHelper.get_imran_even_sb_wires(num_track)
         super().__init__(x, y, num_track, width, internal_wires)
+
+class TallImranSwitchBox(SwitchBox):
+    def __init__(self, x: int, y: int, num_track: int, num_horizontal_track: int, width: int):
+        if mod(num_track, 2) == 1:
+            # odd number of tracks
+            internal_wires = SwitchBoxHelper.get_tall_imran_sb_wires(num_track, num_horizontal_track)
+        else:
+            # even number of tracks
+            internal_wires = SwitchBoxHelper.get_tall_imran_even_sb_wires(num_track, num_horizontal_track)
+        super().__init__(x, y, num_track, width, internal_wires, num_horizontal_track, isTall=True)
+
 
 
 class CoreConnectionType(enum.Flag):
@@ -433,17 +498,23 @@ class Tile:
     def __init__(self, x: int, y: int,
                  track_width: int,
                  switchbox: SwitchBox,
-                 height: int = 1):
+                 height: int = 1, isTallTile: bool = False):
         self.x = x
         self.y = y
         self.track_width = track_width
         self.height = height
+        self.isTallTile = isTallTile
 
         # create a copy of switch box because the switchbox nodes have to be
         # created
-        self.switchbox: SwitchBox = SwitchBox(x, y, switchbox.num_track,
-                                              switchbox.width,
-                                              switchbox.internal_wires)
+        if isTallTile:
+            self.switchbox: SwitchBox = SwitchBox(x, y, switchbox.num_track, 
+                                                switchbox.width,
+                                                switchbox.internal_wires, num_horizontal_track=switchbox.num_horizontal_track, isTall=True)
+        else:
+            self.switchbox: SwitchBox = SwitchBox(x, y, switchbox.num_track, 
+                                                switchbox.width,
+                                                switchbox.internal_wires)
 
         self.ports: Dict[str, PortNode] = {}
 
@@ -694,10 +765,15 @@ class InterconnectGraph:
         for (x, y), tile in self.__tiles.items():
             # construct the connection types
             switch = tile.switchbox
+            includeTallConnections = tile.isTallTile
             num_track = switch.num_track
             connections: List[SBConnectionType] = []
-            for track in range(num_track):
-                for side, io in connection_type:
+            for side, io in connection_type:
+                num_tracks_to_loop_over = num_track 
+                if includeTallConnections:
+                    if side == SwitchBoxSide.EAST or side == SwitchBoxSide.WEST:
+                        num_tracks_to_loop_over = switch.num_horizontal_track
+                for track in range(num_tracks_to_loop_over):
                     connections.append(SBConnectionType(side, track,
                                                         io))
             self.set_core_connection(x, y, port_name, connections)
@@ -817,7 +893,7 @@ class InterconnectGraph:
 
     def connect_switchbox(self, x0: int, y0: int, x1: int, y1: int,
                           expected_length: int, track: int,
-                          policy: InterconnectPolicy):
+                          policy: InterconnectPolicy, isTallConnection: bool = False):
         """connect switches with expected length in the region
         (x0, y0) <-> (x1, y1), inclusively. it will tries to connect everything
         with expected length. connect in left -> right & top -> bottom fashion.
@@ -884,40 +960,41 @@ class InterconnectGraph:
                 self.__add_sb_connection(tile_to, tile_from, track,
                                          SwitchBoxSide.WEST)
 
-        # top to bottom this is very similar to the previous one (left to
-        # right)
-        for x in range(x0, x1 + 1):
-            for y in range(y0, y1 - expected_length + 1, expected_length):
-                if not self.is_original_tile(x, y):
-                    continue
-                tile_from = self.get_tile(x, y)
-                tile_to = self.get_tile(x, y + expected_length)
-                # several outcomes to consider
-                # 1. tile_to is empty -> apply policy
-                # 2. tile_to is a reference -> apply policy
-                if not self.is_original_tile(x, y + expected_length):
-                    if policy == InterconnectPolicy.Ignore:
+        if not(isTallConnection):
+            # top to bottom this is very similar to the previous one (left to
+            # right)
+            for x in range(x0, x1 + 1):
+                for y in range(y0, y1 - expected_length + 1, expected_length):
+                    if not self.is_original_tile(x, y):
                         continue
-                    y_ = y + expected_length
-                    while y_ < y1:
-                        if self.is_original_tile(x, y_):
-                            tile_to = self.__tile_grid[y_][x]
-                            break
-                        y_ += 1
-                    # check again if we have resolved this issue
-                    # since it's best effort, we will ignore if no tile left
-                    # to connect
-                    if not self.is_original_tile(x, y_):
-                        continue
+                    tile_from = self.get_tile(x, y)
+                    tile_to = self.get_tile(x, y + expected_length)
+                    # several outcomes to consider
+                    # 1. tile_to is empty -> apply policy
+                    # 2. tile_to is a reference -> apply policy
+                    if not self.is_original_tile(x, y + expected_length):
+                        if policy == InterconnectPolicy.Ignore:
+                            continue
+                        y_ = y + expected_length
+                        while y_ < y1:
+                            if self.is_original_tile(x, y_):
+                                tile_to = self.__tile_grid[y_][x]
+                                break
+                            y_ += 1
+                        # check again if we have resolved this issue
+                        # since it's best effort, we will ignore if no tile left
+                        # to connect
+                        if not self.is_original_tile(x, y_):
+                            continue
 
-                assert tile_to.x == tile_from.x
-                # add to connection list
-                # forward
-                self.__add_sb_connection(tile_from, tile_to, track,
-                                         SwitchBoxSide.SOUTH)
-                # backward
-                self.__add_sb_connection(tile_to, tile_from, track,
-                                         SwitchBoxSide.NORTH)
+                    assert tile_to.x == tile_from.x
+                    # add to connection list
+                    # forward
+                    self.__add_sb_connection(tile_from, tile_to, track,
+                                            SwitchBoxSide.SOUTH)
+                    # backward
+                    self.__add_sb_connection(tile_to, tile_from, track,
+                                            SwitchBoxSide.NORTH)
 
     def __add_sb_connection(self, tile_from: Tile,
                             tile_to: Tile, track: int,
@@ -1066,6 +1143,78 @@ class SwitchBoxHelper:
             result.append((mod(track + 1, w), SwitchBoxSide.WEST,
                            track, SwitchBoxSide.SOUTH))
         return result
+    
+    @staticmethod
+    def get_tall_wilton_sb_wires(num_tracks: int, num_horizontal_tracks: int) -> List[Tuple[int,
+                                                           SwitchBoxSide,
+                                                           int,
+                                                           SwitchBoxSide]]:
+        w = num_tracks
+        result = []
+        # t_i is defined as
+        #     3
+        #   -----
+        # 2 |   | 0
+        #   -----
+        #     1
+        for track in range(num_tracks):
+            result.append((track, SwitchBoxSide.WEST,
+                           track, SwitchBoxSide.EAST))
+            result.append((track, SwitchBoxSide.EAST,
+                           track, SwitchBoxSide.WEST))
+            # t_1, t_3
+            result.append((track, SwitchBoxSide.SOUTH,
+                           track, SwitchBoxSide.NORTH))
+            result.append((track, SwitchBoxSide.NORTH,
+                           track, SwitchBoxSide.SOUTH))
+            # t_0, t_1
+            result.append((track, SwitchBoxSide.WEST,
+                           mod(w - track, w), SwitchBoxSide.NORTH))
+            result.append((mod(w - track, w), SwitchBoxSide.NORTH,
+                           track, SwitchBoxSide.WEST))
+            # t_1, t_2
+            result.append((track, SwitchBoxSide.NORTH,
+                           mod(track + 1, w), SwitchBoxSide.EAST))
+            result.append((mod(track + 1, w), SwitchBoxSide.EAST,
+                           track, SwitchBoxSide.NORTH))
+            # t_2, t_3
+            result.append((track, SwitchBoxSide.EAST,
+                           mod(2 * w - 2 - track, w), SwitchBoxSide.SOUTH))
+            result.append((mod(2 * w - 2 - track, w), SwitchBoxSide.SOUTH,
+                           track, SwitchBoxSide.EAST))
+            # t3, t_0
+            result.append((track, SwitchBoxSide.SOUTH,
+                          mod(track + 1, w), SwitchBoxSide.WEST))
+            result.append((mod(track + 1, w), SwitchBoxSide.WEST,
+                           track, SwitchBoxSide.SOUTH))
+            
+        additional_result_0 = []
+        # Add other actors
+        for conn in result:
+            source_track = conn[0]
+            source_side = conn[1]
+            dest_track = conn[2]
+            dest_side = conn[3]
+            
+            for additional_track in range(num_tracks, num_horizontal_tracks):
+                if source_side != SwitchBoxSide.SOUTH and source_side != SwitchBoxSide.NORTH:
+                    if additional_track % num_tracks == source_track:
+                        additional_result_0.append((additional_track, source_side, dest_track, dest_side))
+
+                if dest_side != SwitchBoxSide.SOUTH and dest_side != SwitchBoxSide.NORTH:
+                    if additional_track % num_tracks == dest_track:
+                        additional_result_0.append((source_track, source_side, additional_track, dest_side))
+        
+
+        additional_result_1 = []
+        for additional_track in range(num_tracks, num_horizontal_tracks):
+            additional_result_1.append((additional_track, SwitchBoxSide.WEST, additional_track, SwitchBoxSide.EAST))
+            additional_result_1.append((additional_track, SwitchBoxSide.EAST, additional_track, SwitchBoxSide.WEST))
+
+        result.extend(additional_result_0)
+        result.extend(additional_result_1)
+        
+        return result
 
     @staticmethod
     def get_imran_sb_wires(num_tracks: int) -> List[Tuple[int,
@@ -1106,6 +1255,76 @@ class SwitchBoxHelper:
                            track, SwitchBoxSide.NORTH))
             result.append((track, SwitchBoxSide.NORTH,
                            track, SwitchBoxSide.SOUTH))
+        return result
+    
+
+    @staticmethod
+    def get_tall_imran_sb_wires(num_tracks: int, num_horizontal_tracks: int) -> List[Tuple[int,
+                                                          SwitchBoxSide,
+                                                          int,
+                                                          SwitchBoxSide]]:
+        w = num_tracks
+        result = []
+
+        for track in range(num_tracks):
+            # f_e1
+            result.append((track, SwitchBoxSide.WEST,
+                           mod(w - track, w), SwitchBoxSide.NORTH))
+            result.append((mod(w - track, w), SwitchBoxSide.NORTH,
+                           track, SwitchBoxSide.WEST))
+            # f_e2
+            result.append((track, SwitchBoxSide.NORTH,
+                           mod(track + 1, w), SwitchBoxSide.EAST))
+            result.append((mod(track + 1, w), SwitchBoxSide.EAST,
+                           track, SwitchBoxSide.NORTH))
+            # f_e3
+            result.append((track, SwitchBoxSide.SOUTH,
+                           mod(w - track - 2, w), SwitchBoxSide.EAST))
+            result.append((mod(w - track - 2, w), SwitchBoxSide.EAST,
+                           track, SwitchBoxSide.SOUTH))
+            # f_e4
+            result.append((track, SwitchBoxSide.WEST,
+                           mod(track - 1, w), SwitchBoxSide.SOUTH))
+            result.append((mod(track - 1, w), SwitchBoxSide.SOUTH,
+                           track, SwitchBoxSide.WEST))
+            # f_e5
+            result.append((track, SwitchBoxSide.WEST,
+                           track, SwitchBoxSide.EAST))
+            result.append((track, SwitchBoxSide.EAST,
+                           track, SwitchBoxSide.WEST))
+            # f_e6
+            result.append((track, SwitchBoxSide.SOUTH,
+                           track, SwitchBoxSide.NORTH))
+            result.append((track, SwitchBoxSide.NORTH,
+                           track, SwitchBoxSide.SOUTH))
+            
+
+        additional_result_0 = []
+        # Add other actors
+        for conn in result:
+            source_track = conn[0]
+            source_side = conn[1]
+            dest_track = conn[2]
+            dest_side = conn[3]
+            
+            for additional_track in range(num_tracks, num_horizontal_tracks):
+                if source_side != SwitchBoxSide.SOUTH and source_side != SwitchBoxSide.NORTH:
+                    if additional_track % num_tracks == source_track:
+                        additional_result_0.append((additional_track, source_side, dest_track, dest_side))
+
+                if dest_side != SwitchBoxSide.SOUTH and dest_side != SwitchBoxSide.NORTH:
+                    if additional_track % num_tracks == dest_track:
+                        additional_result_0.append((source_track, source_side, additional_track, dest_side))
+        
+
+        additional_result_1 = []
+        for additional_track in range(num_tracks, num_horizontal_tracks):
+            additional_result_1.append((additional_track, SwitchBoxSide.WEST, additional_track, SwitchBoxSide.EAST))
+            additional_result_1.append((additional_track, SwitchBoxSide.EAST, additional_track, SwitchBoxSide.WEST))
+
+        result.extend(additional_result_0)
+        result.extend(additional_result_1)
+
         return result
 
     @staticmethod
@@ -1157,6 +1376,85 @@ class SwitchBoxHelper:
             result.append((track, SwitchBoxSide.NORTH,
                            track, SwitchBoxSide.SOUTH))
         return result
+    
+
+    @staticmethod
+    def get_tall_imran_even_sb_wires(num_tracks: int) -> List[Tuple[int,
+                                                          SwitchBoxSide,
+                                                          int,
+                                                          SwitchBoxSide]]:
+        w = num_tracks
+        result = []
+        # This method is used when the total number of tracks is even
+        # it changes the connection inside the SB to avoid close-loop
+
+        for track in range(num_tracks):
+            # f_e1
+            if track == 0:
+                result.append((track, SwitchBoxSide.WEST,
+                            1, SwitchBoxSide.NORTH))
+            elif track == (w - 1):
+                result.append((track, SwitchBoxSide.WEST,
+                            0, SwitchBoxSide.NORTH))
+            else:
+                result.append((track, SwitchBoxSide.WEST,
+                            mod(w - track, w), SwitchBoxSide.NORTH))
+                result.append((mod(w - track, w), SwitchBoxSide.NORTH,
+                            track, SwitchBoxSide.WEST))
+            # f_e2
+            result.append((track, SwitchBoxSide.NORTH,
+                           mod(track + 1, w), SwitchBoxSide.EAST))
+            result.append((mod(track + 1, w), SwitchBoxSide.EAST,
+                           track, SwitchBoxSide.NORTH))
+            # f_e3
+            result.append((track, SwitchBoxSide.SOUTH,
+                           mod(w - track - 2, w), SwitchBoxSide.EAST))
+            result.append((mod(w - track - 2, w), SwitchBoxSide.EAST,
+                           track, SwitchBoxSide.SOUTH))
+            # f_e4
+            result.append((track, SwitchBoxSide.WEST,
+                           mod(track - 1, w), SwitchBoxSide.SOUTH))
+            result.append((mod(track - 1, w), SwitchBoxSide.SOUTH,
+                           track, SwitchBoxSide.WEST))
+            # f_e5
+            result.append((track, SwitchBoxSide.WEST,
+                           track, SwitchBoxSide.EAST))
+            result.append((track, SwitchBoxSide.EAST,
+                           track, SwitchBoxSide.WEST))
+            # f_e6
+            result.append((track, SwitchBoxSide.SOUTH,
+                           track, SwitchBoxSide.NORTH))
+            result.append((track, SwitchBoxSide.NORTH,
+                           track, SwitchBoxSide.SOUTH))
+            
+
+        additional_result_0 = []
+        # Add other actors
+        for conn in result:
+            source_track = conn[0]
+            source_side = conn[1]
+            dest_track = conn[2]
+            dest_side = conn[3]
+            
+            for additional_track in range(num_tracks, num_horizontal_tracks):
+                if source_side != SwitchBoxSide.SOUTH and source_side != SwitchBoxSide.NORTH:
+                    if additional_track % num_tracks == source_track:
+                        additional_result_0.append((additional_track, source_side, dest_track, dest_side))
+
+                if dest_side != SwitchBoxSide.SOUTH and dest_side != SwitchBoxSide.NORTH:
+                    if additional_track % num_tracks == dest_track:
+                        additional_result_0.append((source_track, source_side, additional_track, dest_side))
+        
+
+        additional_result_1 = []
+        for additional_track in range(num_tracks, num_horizontal_tracks):
+            additional_result_1.append((additional_track, SwitchBoxSide.WEST, additional_track, SwitchBoxSide.EAST))
+            additional_result_1.append((additional_track, SwitchBoxSide.EAST, additional_track, SwitchBoxSide.WEST))
+
+        result.extend(additional_result_0)
+        result.extend(additional_result_1)
+
+        return result
 
 
 def create_name(name: str):
@@ -1167,3 +1465,42 @@ def create_name(name: str):
     if name[-1] == "_":
         name = name[:-1]
     return name
+
+if __name__ == "__main__":
+    num_tracks = 5
+    num_horizontal_tracks = 16
+    internal_wires_wilton= SwitchBoxHelper.get_wilton_sb_wires(num_tracks)
+    internal_wires_tall_wilton = SwitchBoxHelper.get_tall_wilton_sb_wires(num_tracks, num_horizontal_tracks)
+    internal_wires_imran= SwitchBoxHelper.get_imran_sb_wires(num_tracks)
+    internal_wires_tall_imran = SwitchBoxHelper.get_tall_imran_sb_wires(num_tracks, num_horizontal_tracks)
+
+
+    def count_mux_inputs(tuple_list):
+        mux_input_counts = defaultdict(lambda: 1)  # Dictionary to store mux_input counts. Add 1 by default for PE output
+        
+        for item in tuple_list:
+            track = f"{item[2]}_{item[3]}"  # Use 3rd and 4th elements
+            mux_input_counts[track] += 1  # Increment count
+
+        return dict(mux_input_counts)  # Convert defaultdict to a regular dict
+    
+
+    print(count_mux_inputs(internal_wires_tall_imran))
+
+
+
+    with open("imran.txt", "w") as file:
+        for item in internal_wires_imran:
+            file.write(str(item) + "\n")
+
+    with open("tall_imran.txt", "w") as file:
+        for item in internal_wires_tall_imran:
+            file.write(str(item) + "\n")
+
+    with open("wilton.txt", "w") as file:
+            for item in internal_wires_wilton:
+                file.write(str(item) + "\n")
+
+    with open("tall_wilton.txt", "w") as file:
+        for item in internal_wires_tall_wilton:
+            file.write(str(item) + "\n")
