@@ -404,9 +404,6 @@ class SB(InterconnectConfigurable):
                         assert node.x == sb.x and node.y == sb.y
                         output_port = mux.ports.O
                         idx = node.get_conn_in().index(sb)
-                        #breakpoint()
-                        # if str(node) == "SB_T5_WEST_SB_OUT_B1":
-                        #     breakpoint()
                         node_, node_mux = self.sb_muxs[str(node)]
                         assert node_ == node
                         input_port = node_mux.ports.I[idx]
