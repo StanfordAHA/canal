@@ -491,6 +491,14 @@ class SB(InterconnectConfigurable):
                 end = self.registers[end_name]
                 self.wire(end.ports.O[0], reg.ports.end_fifo)
 
+                # MO: Flush signal HACK
+                # Set bogus mode 
+                bogus_init_name = str(node) + "_bogus_init"
+                self.add_config(bogus_init_name, 1)
+                bogus_init = self.registers[bogus_init_name]
+                self.wire(bogus_init.ports.O[0], reg.ports.bogus_init)
+
+
     def __handle_rmux_fanin(self, sb: SwitchBoxNode, rmux: RegisterMuxNode,
                             reg: RegisterNode):
         # exclusive because the destination mux can only select one

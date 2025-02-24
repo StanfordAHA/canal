@@ -260,6 +260,7 @@ class SplitFifo(Generator):
 
         # MO: Flush signal HACK
         flush = self.input("flush", 1)
+        bogus_init = self.input("bogus_init", 1)
 
         data_in = self.input("data_in", width)
         data_out = self.output("data_out", width)
@@ -297,6 +298,8 @@ class SplitFifo(Generator):
         def value_logic():
             if rst:
                 value = 0
+            elif flush:
+                value = 0
             elif clk_en:
                 if (~fifo_en).or_(valid0.and_(ready0).and_(~(empty.and_(ready1).and_(valid1)))):
                     value = data_in
@@ -305,6 +308,11 @@ class SplitFifo(Generator):
         def empty_logic():
             if rst:
                 empty_n = 0
+            elif flush:
+                if bogus_init:
+                    empty_n = 1
+                else:
+                    empty_n = 0
             elif clk_en:
                 if fifo_en:
                     if valid1.and_(ready1):
@@ -342,6 +350,7 @@ class FifoRegWrapper(GemstoneGenerator):
             
             # MO: Flush signal HACK 
             flush=magma.In(magma.Bit),
+            bogus_init=magma.In(magma.Bit),
 
             valid_in=magma.In(magma.Bit),
             valid_out=magma.Out(magma.Bit),
@@ -351,13 +360,17 @@ class FifoRegWrapper(GemstoneGenerator):
             start_fifo=magma.In(magma.Bit),
             end_fifo=magma.In(magma.Bit)
         )
-        
+
         self.wire(self.ports.I, self.__circuit.ports.data_in)
         self.wire(self.ports.O, self.__circuit.ports.data_out)
         self.wire(self.ports.clk, self.__circuit.ports.clk)
         self.wire(self.ports.CE, self.__circuit.ports.clk_en[0])
         self.wire(self.ports.fifo_en, self.__circuit.ports.fifo_en[0])
+
+        # MO: Flush signal HACK
         self.wire(self.ports.flush, self.__circuit.ports.flush[0])
+        self.wire(self.ports.bogus_init, self.__circuit.ports.bogus_init[0])
+
         self.wire(self.ports.ASYNCRESET,
                   self.__circuit.ports.rst)
         self.wire(self.ports.valid_in, self.__circuit.ports.valid0[0])
