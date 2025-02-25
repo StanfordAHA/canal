@@ -1256,7 +1256,7 @@ class TileCircuit(GemstoneGenerator):
             return configs
         return base_config
 
-    def configure_fifo(self, node: RegisterNode, start: bool, end: bool):
+    def configure_fifo(self, node: RegisterNode, start: bool, end: bool, bogus_init: bool = False):
         configs = []
         # we only turn this on if it's a path from register to mux with ready-valid
         circuit = self.sbs[node.width]
@@ -1264,10 +1264,13 @@ class TileCircuit(GemstoneGenerator):
         self.__add_additional_config(reg_name, 1, circuit, configs)
         start_name = str(node) + "_start"
         end_name = str(node) + "_end"
+        bogus_init_name = str(node) + "_bogus_init"
         start = int(start)
         end = int(end)
+        bogus_init = int(bogus_init)
         self.__add_additional_config(start_name, start, circuit, configs)
         self.__add_additional_config(end_name, end, circuit, configs)
+        self.__add_additional_config(bogus_init_name, bogus_init, circuit, configs)
         return configs
 
     def __lift_ports(self):

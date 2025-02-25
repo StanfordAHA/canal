@@ -491,10 +491,10 @@ class Interconnect(generator.Generator):
 
         return res
 
-    def __set_fifo_mode(self, node: RegisterNode, start: bool, end: bool):
+    def __set_fifo_mode(self, node: RegisterNode, start: bool, end: bool, bogus_init: bool = False):
         x, y = node.x, node.y
         tile = self.tile_circuits[(x, y)]
-        config_data = tile.configure_fifo(node, start, end)
+        config_data = tile.configure_fifo(node, start, end, bogus_init)
         res = []
         for reg_addr, feat_addr, data in config_data:
             addr = self.get_config_addr(reg_addr, feat_addr, x, y)
@@ -537,9 +537,9 @@ class Interconnect(generator.Generator):
                         for idx in range(0, len(reg_nodes), 2):
                             first_node = reg_nodes[idx]
                             last_node = reg_nodes[idx + 1]
-                            config = self.__set_fifo_mode(first_node, True, False)
+                            config = self.__set_fifo_mode(first_node, True, False, bogus_init=False)
                             result += config
-                            config = self.__set_fifo_mode(last_node, False, True)
+                            config = self.__set_fifo_mode(last_node, False, True, bogus_init=False)
                             result += config
 
         return result
