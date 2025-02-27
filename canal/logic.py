@@ -40,7 +40,7 @@ class RegFIFO(Generator):
         self._clk = self.clock("clk")
         self._rst_n = self.reset("rst_n")
         self._clk_en = self.clock_en("clk_en", 1)
-
+       
         # INPUTS
         self._data_in = self.input("data_in",
                                    self.data_width,
@@ -285,7 +285,8 @@ class SplitFifo(Generator):
         fifo_en = self.input("fifo_en", 1)
 
         # need to add clock enables
-        clk_en = self.clock_en("clk_en")
+        # clk_en = self.clock_en("clk_en")
+        clk_en = self.input("clk_en", 1)
 
         self.wire(ready_in, ready1.and_(~start_fifo))
         self.wire(ready0, kratos.ternary(fifo_en, empty.or_(ready_in), clk_en))
