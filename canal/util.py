@@ -188,8 +188,8 @@ def create_uniform_interconnect(width: int,
         for x in range(x_min, x_max + 1):
             for y in range(y_max+1, height):
                 core = column_core_fn(x, y)
-                if core is None:
-                    continue
+                # if core is None:
+                #     continue
             
                 sb = SwitchBox(x, y, 0, track_width, [])
                 tile_circuit = Tile(x, y, track_width, sb, tile_height)

@@ -730,7 +730,11 @@ class InterconnectGraph:
         width, height = self.get_size()
         if x >= width or y >= height:
             return None
-        result = self.__tile_grid[y][x]
+        try:
+            result = self.__tile_grid[y][x]
+        # MO: HACK to allow South MU I/O placement to work with blank spaces at the edges 
+        except IndexError:
+            return None
         return result
 
     def has_empty_tile(self) -> bool:
