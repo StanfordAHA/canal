@@ -62,6 +62,7 @@ def create_uniform_interconnect(width: int,
                                 tall_north_io_sbs: bool = True,
                                 num_tall_sb_horizontal_tracks: int = 16,
                                 num_fabric_cols_removed: int = 0,
+                                using_matrix_unit: bool = False,
                                 additional_core_fn: Callable[[int, int], Core] = lambda _, __: None,
                                 inter_core_connection: Dict[str, List[str]] = None
                                 ) -> InterconnectGraph:
@@ -135,7 +136,7 @@ def create_uniform_interconnect(width: int,
                 additional_core_interface = CoreInterface(additional_core)
                 tile_circuit.add_additional_core(additional_core_interface,
                                                  CoreConnectionType.SB | CoreConnectionType.CB)
-
+                
     # Handle North I/O if giving north I/O SB
     if give_north_io_sbs:
         for x in range(x_min, x_max + 1):
@@ -181,6 +182,21 @@ def create_uniform_interconnect(width: int,
                     additional_core_interface = CoreInterface(additional_core)
                     tile_circuit.add_additional_core(additional_core_interface,
                                                     CoreConnectionType.SB | CoreConnectionType.CB)
+                    
+    # Handle South Matrix unit I/O tiles if they exist
+    if using_matrix_unit and IOSide.South in io_sides:
+        for x in range(x_min, x_max + 1):
+            for y in range(y_max+1, height):
+                core = column_core_fn(x, y)
+                # if core is None:
+                #     continue
+            
+                sb = SwitchBox(x, y, 0, track_width, [])
+                tile_circuit = Tile(x, y, track_width, sb, tile_height)
+                interconnect.add_tile(tile_circuit)   
+                core_interface = CoreInterface(core)
+                interconnect.set_core(x, y, core_interface)
+
 
     # create tiles without SB
     for x in range(width):
@@ -196,7 +212,6 @@ def create_uniform_interconnect(width: int,
             interconnect.add_tile(tile_circuit)   
             core_interface = CoreInterface(core)
             interconnect.set_core(x, y, core_interface)
-    
 
     # set port connections
     port_names = list(port_connections.keys())
