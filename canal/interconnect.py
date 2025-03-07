@@ -515,8 +515,71 @@ class Interconnect(generator.Generator):
 
         return False
 
+    def merge_segments_across_routes(self, routes: Dict[str, List[List[object]]]) -> Dict[str, List[List[object]]]:
+        '''
+        Merge segments splitted by REG node
+        '''
+        # Flatten segments
+        seg_list = []
+        for route_key, segs in routes.items():
+            for seg in segs:
+                seg_list.append({"route": route_key, "nodes": seg})
+
+        def reg_key(node: object):
+            # For checking whether reg nodes are the same
+            return (str(node), node.x, node.y)
+
+        changed = True
+        while changed:
+            changed = False
+            new_seg_list = []
+            used = [False] * len(seg_list)
+            for i in range(len(seg_list)):
+                if used[i]:
+                    continue
+                merged_route = seg_list[i]["route"]
+                merged_nodes = seg_list[i]["nodes"].copy()
+                merged = True
+                while merged:
+                    merged = False
+                    for j in range(len(seg_list)):
+                        if used[j] or i == j:
+                            continue
+                        candidate = seg_list[j]
+                        if not candidate["nodes"]:
+                            continue
+                        # Case 1: Append candidate if current segment's last node matches candidate's first node.
+                        if (isinstance(merged_nodes[-1], RegisterNode) and isinstance(candidate["nodes"][0], RegisterNode) and
+                            reg_key(merged_nodes[-1]) == reg_key(candidate["nodes"][0])):
+                            merged_nodes.extend(candidate["nodes"][1:])  # skip joint REG node
+                            used[j] = True
+                            merged = True
+                            changed = True
+                            break
+                        # Case 2: Prepend candidate if current segment's first node matches candidate's last node.
+                        if (isinstance(merged_nodes[0], RegisterNode) and isinstance(candidate["nodes"][-1], RegisterNode) and
+                            reg_key(merged_nodes[0]) == reg_key(candidate["nodes"][-1])):
+                            merged_nodes = candidate["nodes"][:-1] + merged_nodes  # skip joint REG node
+                            used[j] = True
+                            merged = True
+                            changed = True
+                            break
+                new_seg_list.append({"route": merged_route, "nodes": merged_nodes})
+                used[i] = True
+            seg_list = new_seg_list
+
+        # Reconstruct the routes dict, using the original route key from the segment that was extended
+        new_routes: Dict[str, List[List[object]]] = {}
+        for seg in seg_list:
+            key = seg["route"]
+            new_routes.setdefault(key, []).append(seg["nodes"])
+        return new_routes
+
     def get_route_bitstream(self, routes: Dict[str, List[List[Node]]], use_fifo: bool = False,
                             id_to_name = None, reg_loc_to_id = None, id_to_metadata = None):
+        # Merge segments splitted by REG node if fifo is enabled
+        if use_fifo: routes = self.merge_segments_across_routes(routes)
+
         result = []
         for _, route in routes.items():
             for segment in route:
