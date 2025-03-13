@@ -503,14 +503,18 @@ class Interconnect(generator.Generator):
         return res
 
     def get_bogus_init_config(self, node_track: str, x: int, y: int, id_to_name: Dict[str, str], reg_loc_to_id: Dict[Tuple[int, int], List[str]], id_to_metadata):
+        print(f"Checking for bonus init config at {node_track} at {x}, {y}")
+        print(reg_loc_to_id)
         matching_reg_list = reg_loc_to_id[(x, y)]
         for reg in matching_reg_list:
             reg_full_name = id_to_name[reg]
             if node_track in reg_full_name:
                 if reg in id_to_metadata:
                     reg_metadata = id_to_metadata[reg]
+                    print(f"This regs metadata: {reg_metadata}")
                     extra_data_ = int(reg_metadata['extra_data'])
                     if extra_data_ == 1:
+                        print(f"Added bogus data!!!")
                         return True
 
         return False
@@ -621,11 +625,15 @@ class Interconnect(generator.Generator):
                             last_node = reg_nodes[idx + 1]
 
                             if reg_loc_to_id is None:
+                                print("No reg_loc_to_id provided. Skipping FIFO configuration")
                                 first_node_bogus_init = False
                                 last_node_bogus_init = False
                             else:
+                                print("Have reg_loc_to_id - trying to configure FIFO")
                                 first_node_bogus_init = self.get_bogus_init_config(first_node.name, first_node.x, first_node.y, id_to_name, reg_loc_to_id, id_to_metadata)
                                 last_node_bogus_init = self.get_bogus_init_config(last_node.name, last_node.x, last_node.y, id_to_name, reg_loc_to_id, id_to_metadata)
+                            print(f"First node: {first_node.name} - {first_node_bogus_init}")
+                            print(f"Last node: {last_node.name} - {last_node_bogus_init}")
 
                             config = self.__set_fifo_mode(first_node, True, False, bogus_init=first_node_bogus_init)
                             result += config

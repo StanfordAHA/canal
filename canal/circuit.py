@@ -185,6 +185,9 @@ class SB(InterconnectConfigurable):
         self.reg_muxs: Dict[str, Tuple[RegisterMuxNode, MuxWrapper]] = {}
         self.regs: Dict[str, Tuple[RegisterNode, FromMagma]] = {}
 
+        self.name_to_fanout = {}
+        self.defer_mux_valid_in = True
+
         self.mux_name_to_node: Dict[str:, Node] = {}
 
         super().__init__(config_addr_width, config_data_width,
@@ -262,7 +265,7 @@ class SB(InterconnectConfigurable):
         self.instance_name = self.name()
 
         # ready valid interface
-      
+
         # MO: Flush signal HACK
         self._wire_flush()
         self.__wire_reg_reset()
@@ -421,7 +424,7 @@ class SB(InterconnectConfigurable):
                         assert node_ == node
                         input_port = node_mux.ports.I[idx]
                         self.wire(input_port, output_port)
-                        if self.ready_valid:
+                        if self.ready_valid and not self.defer_mux_valid_in:
                             self.wire(node_mux.ports.valid_in[idx],
                                       mux.ports.valid_out)
 
@@ -492,7 +495,7 @@ class SB(InterconnectConfigurable):
                 self.wire(end.ports.O[0], reg.ports.end_fifo)
 
                 # MO: Flush signal HACK
-                # Set bogus mode 
+                # Set bogus mode
                 bogus_init_name = str(node) + "_bogus_init"
                 self.add_config(bogus_init_name, 1)
                 bogus_init = self.registers[bogus_init_name]
@@ -521,6 +524,15 @@ class SB(InterconnectConfigurable):
             if len(n.get_conn_in()) <= 1:
                 return
         fanout = InclusiveNodeFanout.get(node)
+
+        # Going to lift this valid up to gate it...
+        if self.defer_mux_valid_in:
+            out_port_name = str(node) + "_ready_reduction_for_gating"
+            # print(f"Adding ready reduction for gating on : {node}")
+            # print(f"{out_port_name}")
+            self.add_port(out_port_name, magma.Out(magma.Bits[1]))
+            self.wire(fanout.ports.O, self.ports[out_port_name])
+
         # fanout ports is I{i} S{i} E{i} and sel{i}
         for idx, n in enumerate(list(node)):
             # need to get the mux the node is connected to
@@ -557,6 +569,7 @@ class SB(InterconnectConfigurable):
                           sb_circuit.ports.ready_out)
                 self.wire(fanout.ports[f"S{idx}"], sb_circuit.ports.out_sel)
                 en = self.registers[str(n) + "_enable"].ports.O
+                # self.name_to_fanout[n] = fanout.ports.O[0]
             self.wire(fanout.ports[f"E{idx}"], en)
         # get the node circuit
         if isinstance(node, SwitchBoxNode):
@@ -569,6 +582,7 @@ class SB(InterconnectConfigurable):
                 self.add_port(port_name, magma.BitOut)
             port = self.ports[port_name]
 
+        self.name_to_fanout[node] = fanout.ports.O[0]
         self.wire(fanout.ports.O[0], port)
 
     def add_port_valid(self, node: PortNode):
@@ -603,6 +617,26 @@ class SB(InterconnectConfigurable):
         # in this way we can connect them to each other in the
         if not self.ready_valid:
             return
+
+        # At this point we can hook up the gated valids to the output muxes
+        if self.defer_mux_valid_in:
+            for sb_name, (sb, mux) in self.sb_muxs.items():
+                if sb.io == SwitchBoxIO.SB_IN:
+                    for node in sb:
+                        if isinstance(node, SwitchBoxNode):
+                            assert node.io == SwitchBoxIO.SB_OUT
+                            assert node.x == sb.x and node.y == sb.y
+                            # output_port = mux.ports.O
+                            idx = node.get_conn_in().index(sb)
+                            node_, node_mux = self.sb_muxs[str(node)]
+                            assert node_ == node
+                            # Gate it here...
+                            fanin_node_port = self.name_to_fanout[sb]
+                            and_gate = FromMagma(mantle.DefineAnd(2, 1))
+                            self.wire(and_gate.ports.I0[0], mux.ports.valid_out)
+                            self.wire(and_gate.ports.I1[0], fanin_node_port)
+                            self.wire(node_mux.ports.valid_in[idx], and_gate.ports.O[0])
+
         for sb_name, (sb, mux) in self.sb_muxs.items():
             port_name = create_name(sb_name)
             in_bit = magma.In(magma.Bit)
@@ -740,7 +774,7 @@ class TileCircuit(GemstoneGenerator):
                         self.wire(self.convert(self.ports[valid_port_name], magma.Bits[1]), core_valid_port)
                         self.wire(self.convert(core_ready_port, magma.bit), self.ports[ready_port_name])
 
-                        continue 
+                        continue
 
                     if "io2glb" in port_name:
                         ready_port_name = port_name + "_ready"
@@ -758,7 +792,7 @@ class TileCircuit(GemstoneGenerator):
                         self.wire(self.convert(core_valid_port, magma.bit), self.ports[valid_port_name])
                         self.wire(self.convert(self.ports[ready_port_name], magma.Bits[1]), core_ready_port)
                         continue
-                    
+
                 # input ports
                 if len(port_node) == 0:
                     assert bit_width == port_node.width
@@ -848,9 +882,18 @@ class TileCircuit(GemstoneGenerator):
                     if node.io == SwitchBoxIO.SB_IN:
                         self.wire(self.ports[sb_name], cb.ports.I[idx])
                         if self.ready_valid:
-                            port_name = create_name(str(node)) + "_valid"
-                            self.wire(self.ports[port_name],
-                                      cb.ports.valid_in[idx])
+                            # print("GATING INPUT VALID")
+                            port_name = str(node) + "_valid"
+                            # print(f"{port_name}")
+                            sb_ready_reduction_port = str(node) + "_ready_reduction_for_gating"
+                            # print(f"{sb_ready_reduction_port}")
+                            and_gate = FromMagma(mantle.DefineAnd(2, 1))
+                            self.wire(and_gate.ports.I0[0], self.ports[port_name])
+                            self.wire(and_gate.ports.I1, sb_circuit.ports[sb_ready_reduction_port])
+                            self.wire(cb.ports.valid_in[idx], and_gate.ports.O[0])
+                            # Actually gate it here too from the SB port...
+                            # self.wire(self.ports[port_name],
+                            #           cb.ports.valid_in[idx])
                     else:
                         self.wire(sb_circuit.ports[sb_name], cb.ports.I[idx])
                 else:
@@ -1109,7 +1152,7 @@ class TileCircuit(GemstoneGenerator):
 
         # MO: Flush signal HACK
         self.__wire_flush_to_sbs()
-       
+
         # see if we really need to add config or not
         if not self.__should_add_config():
             return
