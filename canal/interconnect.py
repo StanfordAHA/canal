@@ -527,12 +527,14 @@ class Interconnect(generator.Generator):
         seg_list = []
         for route_key, segs in routes.items():
             for seg in segs:
-                seg_list.append({"route": route_key, "nodes": seg})
+                seg_list.append({"route": route_key, "nodes": seg.copy()})
 
+        # Helper function to form a key for register nodes.
         def reg_key(node: object):
             # For checking whether reg nodes are the same
             return (str(node), node.x, node.y)
 
+        # Standard iterative merging on endpoints
         changed = True
         while changed:
             changed = False
@@ -572,7 +574,29 @@ class Interconnect(generator.Generator):
                 used[i] = True
             seg_list = new_seg_list
 
-        # Reconstruct the routes dict, using the original route key from the segment that was extended
+        # Additional pass: look for same register node in middle point to handle branching
+        # Update the branch segment by prepending the candidate's prefix
+        for seg in seg_list:
+            if seg["nodes"] and isinstance(seg["nodes"][0], RegisterNode):
+                branch_reg = seg["nodes"][0]
+                best_prefix = None
+                # Search all other segments for a candidate that contains branch_reg not at index 0.
+                for candidate in seg_list:
+                    if candidate is seg:
+                        continue
+                    for idx in range(1, len(candidate["nodes"])):
+                        node = candidate["nodes"][idx]
+                        if isinstance(node, RegisterNode) and reg_key(node) == reg_key(branch_reg):
+                            candidate_prefix = candidate["nodes"][:idx+1]
+                            # Choose the candidate with the longest prefix if multiple exist.
+                            if best_prefix is None or len(candidate_prefix) > len(best_prefix):
+                                best_prefix = candidate_prefix
+                            break  # Only need the first occurrence in this candidate.
+                if best_prefix is not None:
+                    # Prepend the found prefix, skipping the duplicate register at the branch start.
+                    seg["nodes"] = best_prefix + seg["nodes"][1:]
+
+        # Reconstruct the routes dictionary.
         new_routes: Dict[str, List[List[object]]] = {}
         for seg in seg_list:
             key = seg["route"]
@@ -581,8 +605,26 @@ class Interconnect(generator.Generator):
 
     def get_route_bitstream(self, routes: Dict[str, List[List[Node]]], use_fifo: bool = False,
                             id_to_name = None, reg_loc_to_id = None, id_to_metadata = None):
+
+        # TODO: For debugging only, can remove these when things get steady
+        # with open("/aha/route_pre_merge.txt", "w") as file:
+        #     for route_name, segments in routes.items():
+        #         file.write(f"\n{route_name}:\n")
+        #         for i, segment in enumerate(segments):
+        #             formatted_nodes = [f"({str(node)}, {node.x}, {node.y})" for node in segment]
+        #             file.write(f"\n  Segment {i}: {' -> '.join(formatted_nodes)}")
+
+
         # Merge segments splitted by REG node if fifo is enabled
         if use_fifo: routes = self.merge_segments_across_routes(routes)
+
+        # TODO: For debugging only, can remove these when things get steady
+        # with open("/aha/route_post_merge.txt", "w") as file:
+        #     for route_name, segments in routes.items():
+        #         file.write(f"\n{route_name}:\n")
+        #         for i, segment in enumerate(segments):
+        #             formatted_nodes = [f"({str(node)}, {node.x}, {node.y})" for node in segment]
+        #             file.write(f"\n  Segment {i}: {' -> '.join(formatted_nodes)}")
 
         result = []
         for _, route in routes.items():
