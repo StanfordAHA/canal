@@ -469,14 +469,14 @@ class SB(InterconnectConfigurable):
                 self.wire(fifo_en.ports.O[0], reg.ports.fifo_en)
 
                 # set start and end
-                start_name = str(node) + "_start"
-                self.add_config(start_name, 1)
-                start = self.registers[start_name]
-                self.wire(start.ports.O[0], reg.ports.start_fifo)
-                end_name = str(node) + "_end"
-                self.add_config(end_name, 1)
-                end = self.registers[end_name]
-                self.wire(end.ports.O[0], reg.ports.end_fifo)
+                # start_name = str(node) + "_start"
+                # self.add_config(start_name, 1)
+                # start = self.registers[start_name]
+                # self.wire(start.ports.O[0], reg.ports.start_fifo)
+                # end_name = str(node) + "_end"
+                # self.add_config(end_name, 1)
+                # end = self.registers[end_name]
+                # self.wire(end.ports.O[0], reg.ports.end_fifo)
 
     def __handle_rmux_fanin(self, sb: SwitchBoxNode, rmux: RegisterMuxNode,
                             reg: RegisterNode):
@@ -1222,6 +1222,13 @@ class TileCircuit(GemstoneGenerator):
 
             if circuit is not None:
                 self.__add_additional_config(str(dst_node) + "_enable", 1, circuit, configs)
+
+            # this means we have to turn on fifo mode
+            if isinstance(dst_node, RegisterMuxNode) and isinstance(src_node, RegisterNode):
+                # we only turn this on if it's a path from register to mux with ready-valid
+                circuit = self.sbs[src_node.width]
+                reg_name = str(src_node) + "_fifo"
+                self.__add_additional_config(reg_name, 1, circuit, configs)
 
             return configs
         return base_config
