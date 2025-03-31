@@ -21,7 +21,7 @@ from mantle import DefineRegister
 from gemstone.generator.const import Const
 from .logic import ExclusiveNodeFanout, InclusiveNodeFanout, ReadyValidLoopBack, \
     FifoRegWrapper
-
+import os
 
 def get_mux_sel_name(node: Node):
     return f"{create_name(str(node))}_sel"
@@ -187,6 +187,9 @@ class SB(InterconnectConfigurable):
 
         self.mux_name_to_node: Dict[str:, Node] = {}
 
+        use_non_split_fifos = "USE_NON_SPLIT_FIFOS" in os.environ and os.environ.get("USE_NON_SPLIT_FIFOS") == "1"
+        self.use_non_split_fifos = use_non_split_fifos
+
         super().__init__(config_addr_width, config_data_width,
                          double_buffer=double_buffer)
 
@@ -333,7 +336,7 @@ class SB(InterconnectConfigurable):
     def __create_reg(self):
         for reg_name, reg_node in self.switchbox.registers.items():
             if self.ready_valid:
-                reg = FifoRegWrapper(reg_node.width)
+                reg = FifoRegWrapper(reg_node.width, self.use_non_split_fifos)
             else:
                 reg_cls = DefineRegister(reg_node.width, has_ce=True)
                 reg = FromMagma(reg_cls)
@@ -468,15 +471,16 @@ class SB(InterconnectConfigurable):
                 fifo_en = self.registers[fifo_name]
                 self.wire(fifo_en.ports.O[0], reg.ports.fifo_en)
 
-                # set start and end
-                # start_name = str(node) + "_start"
-                # self.add_config(start_name, 1)
-                # start = self.registers[start_name]
-                # self.wire(start.ports.O[0], reg.ports.start_fifo)
-                # end_name = str(node) + "_end"
-                # self.add_config(end_name, 1)
-                # end = self.registers[end_name]
-                # self.wire(end.ports.O[0], reg.ports.end_fifo)
+                # set start and end if using splitFIFOs
+                if not(self.use_non_split_fifos):
+                    start_name = str(node) + "_start"
+                    self.add_config(start_name, 1)
+                    start = self.registers[start_name]
+                    self.wire(start.ports.O[0], reg.ports.start_fifo)
+                    end_name = str(node) + "_end"
+                    self.add_config(end_name, 1)
+                    end = self.registers[end_name]
+                    self.wire(end.ports.O[0], reg.ports.end_fifo)
 
     def __handle_rmux_fanin(self, sb: SwitchBoxNode, rmux: RegisterMuxNode,
                             reg: RegisterNode):
@@ -1223,12 +1227,14 @@ class TileCircuit(GemstoneGenerator):
             if circuit is not None:
                 self.__add_additional_config(str(dst_node) + "_enable", 1, circuit, configs)
 
-            # this means we have to turn on fifo mode
-            if isinstance(dst_node, RegisterMuxNode) and isinstance(src_node, RegisterNode):
-                # we only turn this on if it's a path from register to mux with ready-valid
-                circuit = self.sbs[src_node.width]
-                reg_name = str(src_node) + "_fifo"
-                self.__add_additional_config(reg_name, 1, circuit, configs)
+            use_non_split_fifos = "USE_NON_SPLIT_FIFOS" in os.environ and os.environ.get("USE_NON_SPLIT_FIFOS") == "1"
+            if use_non_split_fifos:
+                # this means we have to turn on fifo mode
+                if isinstance(dst_node, RegisterMuxNode) and isinstance(src_node, RegisterNode):
+                    # we only turn this on if it's a path from register to mux with ready-valid
+                    circuit = self.sbs[src_node.width]
+                    reg_name = str(src_node) + "_fifo"
+                    self.__add_additional_config(reg_name, 1, circuit, configs)
 
             return configs
         return base_config
