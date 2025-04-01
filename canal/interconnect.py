@@ -522,25 +522,30 @@ class Interconnect(generator.Generator):
                     configs = self.get_node_bitstream_config(pre_node, next_node,)
                     for addr, data in configs:
                         result.append((addr, data))
-                if use_fifo and len(segment) >= 4:
-                    reg_nodes = []
-                    idx = 0
-                    while idx < len(segment):
-                        pre_node = segment[idx]
-                        if isinstance(pre_node, RegisterNode):
-                            if pre_node not in reg_nodes:
-                                reg_nodes.append(pre_node)
-                        idx += 1
-                    if len(reg_nodes) != 0:
-                        assert len(reg_nodes) != 1, "Cannot have standalone FIFO reg in the segment"
-                        assert len(reg_nodes) % 2 == 0, "Must have even number of FIFO regs"
-                        for idx in range(0, len(reg_nodes), 2):
-                            first_node = reg_nodes[idx]
-                            last_node = reg_nodes[idx + 1]
-                            config = self.__set_fifo_mode(first_node, True, False)
-                            result += config
-                            config = self.__set_fifo_mode(last_node, False, True)
-                            result += config
+             
+                use_non_split_fifos = "USE_NON_SPLIT_FIFOS" in os.environ and os.environ.get("USE_NON_SPLIT_FIFOS") == "1"
+
+                # Only turn reg pairs into FIFOs if using split FIFOs
+                if not(use_non_split_fifos):       
+                    if use_fifo and len(segment) >= 4:
+                        reg_nodes = []
+                        idx = 0
+                        while idx < len(segment):
+                            pre_node = segment[idx]
+                            if isinstance(pre_node, RegisterNode):
+                                if pre_node not in reg_nodes:
+                                    reg_nodes.append(pre_node)
+                            idx += 1
+                        if len(reg_nodes) != 0:
+                            assert len(reg_nodes) != 1, "Cannot have standalone FIFO reg in the segment"
+                            assert len(reg_nodes) % 2 == 0, "Must have even number of FIFO regs"
+                            for idx in range(0, len(reg_nodes), 2):
+                                first_node = reg_nodes[idx]
+                                last_node = reg_nodes[idx + 1]
+                                config = self.__set_fifo_mode(first_node, True, False)
+                                result += config
+                                config = self.__set_fifo_mode(last_node, False, True)
+                                result += config
 
         return result
 
