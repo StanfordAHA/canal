@@ -115,7 +115,8 @@ class RegFIFO(Generator):
 
         self._num_items = self.var("num_items", clog2(self.depth) + 1)
         # self.wire(self._full, (self._wr_ptr + 1) == self._rd_ptr)
-        self.wire(self._full, self._num_items == self.depth)
+        # self.wire(self._full, (self._num_items == self.depth) | ~(~self._flush & self._clk_en))
+        self.wire(self._full, (self._num_items == self.depth) | self._flush)
         # Experiment to cover latency
         self.wire(self._almost_full,
                   self._num_items >= (self.depth - self.almost_full_diff))
@@ -239,7 +240,8 @@ class RegFIFO(Generator):
 
     @always_comb
     def valid_comb(self):
-        self._valid = ((~self._empty) | self._passthru)
+        # self._valid = ((~self._empty & ~self._flush & self._clk_en) | self._passthru)
+        self._valid = ((~self._empty & ~self._flush) | self._passthru)
 
     @always_ff((posedge, "clk"), (negedge, "rst_n"))
     def set_num_items(self):
