@@ -40,7 +40,7 @@ class RegFIFO(Generator):
         self._clk = self.clock("clk")
         self._rst_n = self.reset("rst_n")
         self._clk_en = self.clock_en("clk_en", 1)
-       
+
         # INPUTS
         self._data_in = self.input("data_in",
                                    self.data_width,
@@ -289,9 +289,9 @@ class SplitFifo(Generator):
         clk_en = self.input("clk_en", 1)
 
         self.wire(ready_in, ready1.and_(~start_fifo))
-        self.wire(ready0, kratos.ternary(fifo_en, empty.or_(ready_in), clk_en))
+        self.wire(ready0, kratos.ternary(fifo_en, (empty.or_(ready_in)) & ~flush & clk_en, clk_en))
         self.wire(valid_in, valid0.and_(~end_fifo))
-        self.wire(valid1, kratos.ternary(fifo_en, (~empty).or_(valid_in), clk_en))
+        self.wire(valid1, kratos.ternary(fifo_en, ((~empty).or_(valid_in)) & ~flush & clk_en, clk_en))
 
         self.wire(data_out, kratos.ternary(empty.and_(fifo_en), data_in, value))
 
@@ -348,8 +348,8 @@ class FifoRegWrapper(GemstoneGenerator):
             clk=magma.In(magma.Clock),
             CE=magma.In(magma.Enable),
             ASYNCRESET=magma.In(magma.AsyncReset),
-            
-            # MO: Flush signal HACK 
+
+            # MO: Flush signal HACK
             flush=magma.In(magma.Bit),
             bogus_init=magma.In(magma.Bit),
 
