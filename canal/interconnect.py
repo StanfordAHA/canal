@@ -491,10 +491,10 @@ class Interconnect(generator.Generator):
 
         return res
 
-    def __set_fifo_mode(self, node: RegisterNode, start: bool, end: bool, use_non_split_fifos: bool = False, bogus_init: bool = False):
+    def __set_fifo_mode(self, node: RegisterNode, start: bool, end: bool, use_non_split_fifos: bool = False, bogus_init: bool = False, bogus_init_num: int = 0):
         x, y = node.x, node.y
         tile = self.tile_circuits[(x, y)]
-        config_data = tile.configure_fifo(node, start, end, use_non_split_fifos=use_non_split_fifos, bogus_init=bogus_init)
+        config_data = tile.configure_fifo(node, start, end, use_non_split_fifos=use_non_split_fifos, bogus_init=bogus_init, bogus_init_num=bogus_init_num)
         res = []
         for reg_addr, feat_addr, data in config_data:
             addr = self.get_config_addr(reg_addr, feat_addr, x, y)
@@ -518,6 +518,23 @@ class Interconnect(generator.Generator):
                         return True
 
         return False
+    
+
+    def get_bogus_num_config(self, node_track: str, x: int, y: int, id_to_name: Dict[str, str], reg_loc_to_id: Dict[Tuple[int, int], List[str]], id_to_metadata):
+        print(f"Checking for bonus init config at {node_track} at {x}, {y}")
+        print(reg_loc_to_id)
+        matching_reg_list = reg_loc_to_id[(x, y)]
+        for reg in matching_reg_list:
+            reg_full_name = id_to_name[reg]
+            if node_track in reg_full_name:
+                if reg in id_to_metadata:
+                    reg_metadata = id_to_metadata[reg]
+                    print(f"This regs metadata: {reg_metadata}")
+                    extra_data_ = int(reg_metadata['extra_data'])
+                    if extra_data_ > 0:
+                        print(f"Added bogus data!!!")
+                        return extra_data_
+        return 0
 
     def merge_segments_across_routes(self, routes: Dict[str, List[List[object]]]) -> Dict[str, List[List[object]]]:
         '''
@@ -645,13 +662,19 @@ class Interconnect(generator.Generator):
                     configs = self.get_node_bitstream_config(pre_node, next_node,)
                     for addr, data in configs:
                         result.append((addr, data))
-                        
+
                     # FIFO config for non-split FIFOs
                     use_non_split_fifos = "USE_NON_SPLIT_FIFOS" in os.environ and os.environ.get("USE_NON_SPLIT_FIFOS") == "1"
                     if use_non_split_fifos:
                         if use_fifo:
                             if isinstance(next_node, RegisterMuxNode) and isinstance(pre_node, RegisterNode):
-                                config = self.__set_fifo_mode(pre_node, False, False, True)
+                                if reg_loc_to_id is None:
+                                    print("No reg_loc_to_id provided. Skipping FIFO configuration")
+                                    bogus_init_num = 0
+                                else:
+                                    print("Have reg_loc_to_id - trying to configure FIFO")
+                                    bogus_init_num = self.get_bogus_num_config(pre_node.name, pre_node.x, pre_node.y, id_to_name, reg_loc_to_id, id_to_metadata)
+                                config = self.__set_fifo_mode(pre_node, start=False, end=False, use_non_split_fifos=True, bogus_init_num=bogus_init_num)
                                 result += config
 
                 # FIFO config for split FIFOs 
@@ -689,9 +712,9 @@ class Interconnect(generator.Generator):
                                 print(f"First node: {first_node.name} - {first_node_bogus_init}")
                                 print(f"Last node: {last_node.name} - {last_node_bogus_init}")
 
-                                config = self.__set_fifo_mode(first_node, True, False, bogus_init=first_node_bogus_init)
+                                config = self.__set_fifo_mode(first_node, start=True, end=False, bogus_init=first_node_bogus_init)
                                 result += config
-                                config = self.__set_fifo_mode(last_node, False, True, bogus_init=last_node_bogus_init)
+                                config = self.__set_fifo_mode(last_node, start=False, end=True, bogus_init=last_node_bogus_init)
                                 result += config
 
         return result

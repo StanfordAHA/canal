@@ -501,9 +501,16 @@ class SB(InterconnectConfigurable):
                 # MO: Flush signal HACK
                 # Set bogus mode
                 bogus_init_name = str(node) + "_bogus_init"
-                self.add_config(bogus_init_name, 1)
+                if self.use_non_split_fifos:
+                    self.add_config(bogus_init_name, 2)
+                else:
+                    self.add_config(bogus_init_name, 1)
                 bogus_init = self.registers[bogus_init_name]
-                self.wire(bogus_init.ports.O[0], reg.ports.bogus_init)
+
+                if self.use_non_split_fifos:
+                    self.wire(bogus_init.ports.O, reg.ports.bogus_init)
+                else:
+                    self.wire(bogus_init.ports.O[0], reg.ports.bogus_init)
 
 
     def __handle_rmux_fanin(self, sb: SwitchBoxNode, rmux: RegisterMuxNode,
@@ -1303,12 +1310,14 @@ class TileCircuit(GemstoneGenerator):
             return configs
         return base_config
 
-    def configure_fifo(self, node: RegisterNode, start: bool, end: bool, use_non_split_fifos: bool = False, bogus_init: bool = False):
+    def configure_fifo(self, node: RegisterNode, start: bool, end: bool, use_non_split_fifos: bool = False, bogus_init: bool = False, bogus_init_num: int = 0):
         configs = []
         # we only turn this on if it's a path from register to mux with ready-valid
         circuit = self.sbs[node.width]
         reg_name = str(node) + "_fifo"
         self.__add_additional_config(reg_name, 1, circuit, configs)
+        bogus_init_name = str(node) + "_bogus_init"
+        self.__add_additional_config(bogus_init_name, bogus_init_num, circuit, configs)
 
         # Only do start and end config for split FIFOs
         if not(use_non_split_fifos):
