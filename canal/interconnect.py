@@ -491,10 +491,10 @@ class Interconnect(generator.Generator):
 
         return res
 
-    def __set_fifo_mode(self, node: RegisterNode, start: bool, end: bool):
+    def __set_fifo_mode(self, node: RegisterNode, start: bool, end: bool, use_non_split_fifos: bool = False):
         x, y = node.x, node.y
         tile = self.tile_circuits[(x, y)]
-        config_data = tile.configure_fifo(node, start, end)
+        config_data = tile.configure_fifo(node, start, end, use_non_split_fifos)
         res = []
         for reg_addr, feat_addr, data in config_data:
             addr = self.get_config_addr(reg_addr, feat_addr, x, y)
@@ -518,13 +518,20 @@ class Interconnect(generator.Generator):
                         continue
                     if len(next_node.get_conn_in()) == 1:
                         # no mux created. skip
-                        continue
+                        continue      
                     configs = self.get_node_bitstream_config(pre_node, next_node,)
                     for addr, data in configs:
                         result.append((addr, data))
              
-                use_non_split_fifos = "USE_NON_SPLIT_FIFOS" in os.environ and os.environ.get("USE_NON_SPLIT_FIFOS") == "1"
+                    # FIFO config for non-split FIFOs
+                    use_non_split_fifos = "USE_NON_SPLIT_FIFOS" in os.environ and os.environ.get("USE_NON_SPLIT_FIFOS") == "1"
+                    if use_non_split_fifos:
+                        if use_fifo:
+                            if isinstance(next_node, RegisterMuxNode) and isinstance(pre_node, RegisterNode):
+                                config = self.__set_fifo_mode(pre_node, False, False, True)
+                                result += config
 
+                # FIFO config for split FIFOs 
                 # Only turn reg pairs into FIFOs if using split FIFOs
                 if not(use_non_split_fifos):       
                     if use_fifo and len(segment) >= 4:
