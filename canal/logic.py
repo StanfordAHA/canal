@@ -329,12 +329,16 @@ class SplitFifo(Generator):
 class FifoRegWrapper(GemstoneGenerator):
     __cache = {}
 
-    def __init__(self, width):
+    def __init__(self, width, use_non_split_fifos=False):
         super(FifoRegWrapper, self).__init__()
         self.width = width
+        self.use_non_split_fifos = use_non_split_fifos
 
         if width not in FifoRegWrapper.__cache:
-            gen = SplitFifo(width)
+            if self.use_non_split_fifos:
+                gen = RegFIFO(width, 1, depth=2)
+            else:
+                gen = SplitFifo(width)
             _kratos.passes.auto_insert_clock_enable(gen.internal_generator)
             circuit = kratos.util.to_magma(gen)
             FifoRegWrapper.__cache[width] = circuit
@@ -357,10 +361,15 @@ class FifoRegWrapper(GemstoneGenerator):
             valid_out=magma.Out(magma.Bit),
             ready_in=magma.In(magma.Bit),
             ready_out=magma.Out(magma.Bit),
-            fifo_en=magma.In(magma.Bit),
-            start_fifo=magma.In(magma.Bit),
-            end_fifo=magma.In(magma.Bit)
+            fifo_en=magma.In(magma.Bit)
         )
+
+        if not(self.use_non_split_fifos):
+            self.add_ports(
+                start_fifo=magma.In(magma.Bit),
+                end_fifo=magma.In(magma.Bit)
+            )
+           
 
         self.wire(self.ports.I, self.__circuit.ports.data_in)
         self.wire(self.ports.O, self.__circuit.ports.data_out)
@@ -372,15 +381,34 @@ class FifoRegWrapper(GemstoneGenerator):
         self.wire(self.ports.flush, self.__circuit.ports.flush[0])
         self.wire(self.ports.bogus_init, self.__circuit.ports.bogus_init[0])
 
-        self.wire(self.ports.ASYNCRESET,
-                  self.__circuit.ports.rst)
-        self.wire(self.ports.valid_in, self.__circuit.ports.valid0[0])
-        self.wire(self.ports.valid_out, self.__circuit.ports.valid1[0])
-        self.wire(self.ports.ready_in, self.__circuit.ports.ready1[0])
-        self.wire(self.ports.ready_out, self.__circuit.ports.ready0[0])
+        if self.use_non_split_fifos:
+            async_inverter = FromMagma(mantle.Not)
+            async_inverter.instance_name = "async_inverter"
 
-        self.wire(self.ports.start_fifo, self.__circuit.ports.start_fifo[0])
-        self.wire(self.ports.end_fifo, self.__circuit.ports.end_fifo[0])
+            self.wire(self.ports.ASYNCRESET,
+            self.convert(async_inverter.ports.I, magma.asyncreset))
+            self.wire(self.convert(async_inverter.ports.O, magma.asyncreset),
+                    self.__circuit.ports.rst_n)
+
+            self.wire(self.ports.valid_in, self.__circuit.ports.push[0])
+            self.wire(self.ports.valid_out, self.__circuit.ports.valid[0])
+            self.wire(self.ports.ready_in, self.__circuit.ports["pop"][0])
+            # invert full
+            full_inverter = FromMagma(mantle.Not)
+            full_inverter.instance_name = "full_inverter"
+            self.wire(full_inverter.ports.I, self.__circuit.ports.full[0])
+            self.wire(self.ports.ready_out, full_inverter.ports.O)
+        else:
+            self.wire(self.ports.ASYNCRESET,
+                  self.__circuit.ports.rst)
+            self.wire(self.ports.valid_in, self.__circuit.ports.valid0[0])
+            self.wire(self.ports.valid_out, self.__circuit.ports.valid1[0])
+            self.wire(self.ports.ready_in, self.__circuit.ports.ready1[0])
+            self.wire(self.ports.ready_out, self.__circuit.ports.ready0[0])
+
+            self.wire(self.ports.start_fifo, self.__circuit.ports.start_fifo[0])
+            self.wire(self.ports.end_fifo, self.__circuit.ports.end_fifo[0])
+
 
     def name(self):
         return f"FifoRegWrapper_{self.width}"
