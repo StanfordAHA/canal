@@ -491,10 +491,10 @@ class Interconnect(generator.Generator):
 
         return res
 
-    def __set_fifo_mode(self, node: RegisterNode, start: bool, end: bool, bogus_init: bool = False):
+    def __set_fifo_mode(self, node: RegisterNode, start: bool, end: bool, use_non_split_fifos: bool = False, bogus_init: bool = False):
         x, y = node.x, node.y
         tile = self.tile_circuits[(x, y)]
-        config_data = tile.configure_fifo(node, start, end, bogus_init)
+        config_data = tile.configure_fifo(node, start, end, use_non_split_fifos=use_non_split_fifos, bogus_init=bogus_init)
         res = []
         for reg_addr, feat_addr, data in config_data:
             addr = self.get_config_addr(reg_addr, feat_addr, x, y)
@@ -641,46 +641,58 @@ class Interconnect(generator.Generator):
                         continue
                     if len(next_node.get_conn_in()) == 1:
                         # no mux created. skip
-                        continue
+                        continue      
                     configs = self.get_node_bitstream_config(pre_node, next_node,)
                     for addr, data in configs:
                         result.append((addr, data))
-                if use_fifo and len(segment) >= 4:
-                    reg_nodes = []
-                    idx = 0
-                    while idx < len(segment):
-                        pre_node = segment[idx]
-                        if isinstance(pre_node, RegisterNode):
-                            if pre_node not in reg_nodes:
-                                reg_nodes.append(pre_node)
-                        idx += 1
+                        
+                    # FIFO config for non-split FIFOs
+                    use_non_split_fifos = "USE_NON_SPLIT_FIFOS" in os.environ and os.environ.get("USE_NON_SPLIT_FIFOS") == "1"
+                    if use_non_split_fifos:
+                        if use_fifo:
+                            if isinstance(next_node, RegisterMuxNode) and isinstance(pre_node, RegisterNode):
+                                config = self.__set_fifo_mode(pre_node, False, False, True)
+                                result += config
 
-                    # Try to configure...
-                    # for idx in range(0, len(reg_nodes)):
-                        # rn = reg_nodes[idx]
-                        # rn_config = self.get_bogus_init_config(rn.name, rn.x, rn.y, id_to_name, reg_loc_to_id, id_to_metadata)
-                    if len(reg_nodes) != 0:
-                        assert len(reg_nodes) != 1, "Cannot have standalone FIFO reg in the segment"
-                        assert len(reg_nodes) % 2 == 0, "Must have even number of FIFO regs"
-                        for idx in range(0, len(reg_nodes), 2):
-                            first_node = reg_nodes[idx]
-                            last_node = reg_nodes[idx + 1]
+                # FIFO config for split FIFOs 
+                # Only turn reg pairs into FIFOs if using split FIFOs
+                if not(use_non_split_fifos):   
+                    if use_fifo and len(segment) >= 4:
+                        reg_nodes = []
+                        idx = 0
+                        while idx < len(segment):
+                            pre_node = segment[idx]
+                            if isinstance(pre_node, RegisterNode):
+                                if pre_node not in reg_nodes:
+                                    reg_nodes.append(pre_node)
+                            idx += 1
 
-                            if reg_loc_to_id is None:
-                                print("No reg_loc_to_id provided. Skipping FIFO configuration")
-                                first_node_bogus_init = False
-                                last_node_bogus_init = False
-                            else:
-                                print("Have reg_loc_to_id - trying to configure FIFO")
-                                first_node_bogus_init = self.get_bogus_init_config(first_node.name, first_node.x, first_node.y, id_to_name, reg_loc_to_id, id_to_metadata)
-                                last_node_bogus_init = self.get_bogus_init_config(last_node.name, last_node.x, last_node.y, id_to_name, reg_loc_to_id, id_to_metadata)
-                            print(f"First node: {first_node.name} - {first_node_bogus_init}")
-                            print(f"Last node: {last_node.name} - {last_node_bogus_init}")
+                        # Try to configure...
+                        # for idx in range(0, len(reg_nodes)):
+                            # rn = reg_nodes[idx]
+                            # rn_config = self.get_bogus_init_config(rn.name, rn.x, rn.y, id_to_name, reg_loc_to_id, id_to_metadata)
+                        if len(reg_nodes) != 0:
+                            assert len(reg_nodes) != 1, "Cannot have standalone FIFO reg in the segment"
+                            assert len(reg_nodes) % 2 == 0, "Must have even number of FIFO regs"
+                            for idx in range(0, len(reg_nodes), 2):
+                                first_node = reg_nodes[idx]
+                                last_node = reg_nodes[idx + 1]
 
-                            config = self.__set_fifo_mode(first_node, True, False, bogus_init=first_node_bogus_init)
-                            result += config
-                            config = self.__set_fifo_mode(last_node, False, True, bogus_init=last_node_bogus_init)
-                            result += config
+                                if reg_loc_to_id is None:
+                                    print("No reg_loc_to_id provided. Skipping FIFO configuration")
+                                    first_node_bogus_init = False
+                                    last_node_bogus_init = False
+                                else:
+                                    print("Have reg_loc_to_id - trying to configure FIFO")
+                                    first_node_bogus_init = self.get_bogus_init_config(first_node.name, first_node.x, first_node.y, id_to_name, reg_loc_to_id, id_to_metadata)
+                                    last_node_bogus_init = self.get_bogus_init_config(last_node.name, last_node.x, last_node.y, id_to_name, reg_loc_to_id, id_to_metadata)
+                                print(f"First node: {first_node.name} - {first_node_bogus_init}")
+                                print(f"Last node: {last_node.name} - {last_node_bogus_init}")
+
+                                config = self.__set_fifo_mode(first_node, True, False, bogus_init=first_node_bogus_init)
+                                result += config
+                                config = self.__set_fifo_mode(last_node, False, True, bogus_init=last_node_bogus_init)
+                                result += config
 
         return result
 
