@@ -1227,30 +1227,25 @@ class TileCircuit(GemstoneGenerator):
             if circuit is not None:
                 self.__add_additional_config(str(dst_node) + "_enable", 1, circuit, configs)
 
-            use_non_split_fifos = "USE_NON_SPLIT_FIFOS" in os.environ and os.environ.get("USE_NON_SPLIT_FIFOS") == "1"
-            if use_non_split_fifos:
-                # this means we have to turn on fifo mode
-                if isinstance(dst_node, RegisterMuxNode) and isinstance(src_node, RegisterNode):
-                    # we only turn this on if it's a path from register to mux with ready-valid
-                    circuit = self.sbs[src_node.width]
-                    reg_name = str(src_node) + "_fifo"
-                    self.__add_additional_config(reg_name, 1, circuit, configs)
-
             return configs
         return base_config
 
-    def configure_fifo(self, node: RegisterNode, start: bool, end: bool):
+    def configure_fifo(self, node: RegisterNode, start: bool, end: bool, use_non_split_fifos: bool = False):
         configs = []
         # we only turn this on if it's a path from register to mux with ready-valid
         circuit = self.sbs[node.width]
         reg_name = str(node) + "_fifo"
         self.__add_additional_config(reg_name, 1, circuit, configs)
-        start_name = str(node) + "_start"
-        end_name = str(node) + "_end"
-        start = int(start)
-        end = int(end)
-        self.__add_additional_config(start_name, start, circuit, configs)
-        self.__add_additional_config(end_name, end, circuit, configs)
+
+        # Only do start and end config for split FIFOs
+        if not(use_non_split_fifos):
+            start_name = str(node) + "_start"
+            end_name = str(node) + "_end"
+            start = int(start)
+            end = int(end)
+            self.__add_additional_config(start_name, start, circuit, configs)
+            self.__add_additional_config(end_name, end, circuit, configs)
+
         return configs
 
     def __lift_ports(self):
