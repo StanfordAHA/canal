@@ -174,7 +174,7 @@ def apply_global_parallel_meso_wiring(interconnect: Interconnect,
         # skip tiles with no config
         column = [entry for entry in column if "config" in entry.ports]
         # select which configuration controller is connected to that column
-        config_sel = int(x_coor/col_per_config)
+        config_sel = int(x_coor / col_per_config)
         # wire configuration ports to first tile in column
         interconnect.wire(interconnect.ports.config[config_sel],
                           column[0].ports.config)

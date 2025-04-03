@@ -19,9 +19,10 @@ from gemstone.generator.generator import Generator as GemstoneGenerator
 from gemstone.generator.from_magma import FromMagma
 from mantle import DefineRegister
 from gemstone.generator.const import Const
-from .logic import ExclusiveNodeFanout, InclusiveNodeFanout, ReadyValidLoopBack, \
-    FifoRegWrapper
+from .logic import ExclusiveNodeFanout, InclusiveNodeFanout, \
+    ReadyValidLoopBack, FifoRegWrapper
 import os
+
 
 def get_mux_sel_name(node: Node):
     return f"{create_name(str(node))}_sel"
@@ -90,6 +91,7 @@ def _safe_wire(self, port1, port2):
             or port2.base_type() is magma.BitOut and port1.base_type() is magma.Out(magma.Bits[1]):
         return self.wire(port1[0], port2)
     return self.wire(port1, port2)
+
 
 class InterconnectConfigurable(Configurable):
     def safe_wire(self, port1, port2):
@@ -376,7 +378,6 @@ class SB(InterconnectConfigurable):
             self.wire(reg.ports.CE, self.convert(and_gate.ports.O[0],
                                                  magma.enable))
 
-
     def _wire_flush(self):
         if len(self.regs) == 0:
             return
@@ -488,7 +489,7 @@ class SB(InterconnectConfigurable):
                 self.wire(fifo_en.ports.O[0], reg.ports.fifo_en)
 
                 # set start and end if using splitFIFOs
-                if not(self.use_non_split_fifos):
+                if not self.use_non_split_fifos:
                     start_name = str(node) + "_start"
                     self.add_config(start_name, 1)
                     start = self.registers[start_name]
@@ -511,7 +512,6 @@ class SB(InterconnectConfigurable):
                     self.wire(bogus_init.ports.O, reg.ports.bogus_init)
                 else:
                     self.wire(bogus_init.ports.O[0], reg.ports.bogus_init)
-
 
     def __handle_rmux_fanin(self, sb: SwitchBoxNode, rmux: RegisterMuxNode,
                             reg: RegisterNode):
@@ -1008,8 +1008,7 @@ class TileCircuit(GemstoneGenerator):
         # add ports
         self.add_ports(stall=magma.In(magma.Bits[stall_signal_width]),
                        reset=magma.In(magma.AsyncReset),
-                       clk=magma.In(magma.Clock),
-        )
+                       clk=magma.In(magma.Clock))
 
         # lift ports if there is empty sb
         self.__lift_ports()
@@ -1113,7 +1112,6 @@ class TileCircuit(GemstoneGenerator):
 
         for clk_port in clk_ports:
             self.wire(self.ports.clk, clk_port)
-
 
     def __wire_flush_to_sbs(self):
         for _, switchbox in self.sbs.items():
@@ -1310,7 +1308,8 @@ class TileCircuit(GemstoneGenerator):
             return configs
         return base_config
 
-    def configure_fifo(self, node: RegisterNode, start: bool, end: bool, use_non_split_fifos: bool = False, bogus_init: bool = False, bogus_init_num: int = 0):
+    def configure_fifo(self, node: RegisterNode, start: bool, end: bool, use_non_split_fifos: bool = False,
+                       bogus_init: bool = False, bogus_init_num: int = 0):
         configs = []
         # we only turn this on if it's a path from register to mux with ready-valid
         circuit = self.sbs[node.width]
@@ -1320,7 +1319,7 @@ class TileCircuit(GemstoneGenerator):
         self.__add_additional_config(bogus_init_name, bogus_init_num, circuit, configs)
 
         # Only do start and end config for split FIFOs
-        if not(use_non_split_fifos):
+        if not use_non_split_fifos:
             start_name = str(node) + "_start"
             end_name = str(node) + "_end"
             start = int(start)

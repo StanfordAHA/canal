@@ -39,9 +39,9 @@ class RegFIFO(Generator):
         # CLK and RST
         self._clk = self.clock("clk")
         self._rst_n = self.reset("rst_n")
-        self._clk_en = self.input("clk_en", 1)  
+        self._clk_en = self.input("clk_en", 1)
         # self._clk_en = self.clock_en("clk_en", 1)
-       
+
         # INPUTS
         self._data_in = self.input("data_in",
                                    self.data_width,
@@ -56,7 +56,6 @@ class RegFIFO(Generator):
 
         # control whether to function as a pipeline register or not
         self._fifo_en = self.input("fifo_en", 1)
-
 
         # MO: Flush signal HACK
         self._flush = self.input("flush", 1)
@@ -116,7 +115,8 @@ class RegFIFO(Generator):
         self._num_items = self.var("num_items", clog2(self.depth) + 1)
         # self.wire(self._full, (self._wr_ptr + 1) == self._rd_ptr)
         # self.wire(self._full, (self._num_items == self.depth) | ~(~self._flush & self._clk_en))
-        self.wire(self._full, (self._num_items == self.depth) | self._flush)
+        self.wire(self._full, (self._num_items == self.depth) | self._flush | ~self._clk_en)
+        # self.wire(self._full, (self._num_items == self.depth) | self._flush)
         # Experiment to cover latency
         self.wire(self._almost_full,
                   self._num_items >= (self.depth - self.almost_full_diff))
@@ -138,8 +138,7 @@ class RegFIFO(Generator):
             self.add_code(self.rd_ptr_ff_parallel)
             self.wire(self._parallel_out, self._reg_array)
             self.wire(self._write,
-                      self._push_en & ~self._passthru & (
-                              ~self._full | (self._parallel_read)))
+                      self._push_en & ~self._passthru & (~self._full | (self._parallel_read)))
         else:
             # Don't want to write when full at all for decoupling
             self.wire(self._write, self._push_en & ~self._passthru & (~self._full))
@@ -240,8 +239,8 @@ class RegFIFO(Generator):
 
     @always_comb
     def valid_comb(self):
-        # self._valid = ((~self._empty & ~self._flush & self._clk_en) | self._passthru)
-        self._valid = ((~self._empty & ~self._flush) | self._passthru)
+        self._valid = ((~self._empty & ~self._flush & self._clk_en) | self._passthru)
+        # self._valid = ((~self._empty & ~self._flush) | self._passthru)
 
     @always_ff((posedge, "clk"), (negedge, "rst_n"))
     def set_num_items(self):
@@ -395,7 +394,7 @@ class FifoRegWrapper(GemstoneGenerator):
             fifo_en=magma.In(magma.Bit)
         )
 
-        if not(self.use_non_split_fifos):
+        if not self.use_non_split_fifos:
             self.add_ports(
                 start_fifo=magma.In(magma.Bit),
                 end_fifo=magma.In(magma.Bit),
@@ -405,7 +404,6 @@ class FifoRegWrapper(GemstoneGenerator):
             self.add_ports(
                 bogus_init=magma.In(magma.Bits[2])
             )
-           
 
         self.wire(self.ports.I, self.__circuit.ports.data_in)
         self.wire(self.ports.O, self.__circuit.ports.data_out)
@@ -426,9 +424,9 @@ class FifoRegWrapper(GemstoneGenerator):
             async_inverter.instance_name = "async_inverter"
 
             self.wire(self.ports.ASYNCRESET,
-            self.convert(async_inverter.ports.I, magma.asyncreset))
+                      self.convert(async_inverter.ports.I, magma.asyncreset))
             self.wire(self.convert(async_inverter.ports.O, magma.asyncreset),
-                    self.__circuit.ports.rst_n)
+                      self.__circuit.ports.rst_n)
 
             self.wire(self.ports.valid_in, self.__circuit.ports.push[0])
             self.wire(self.ports.valid_out, self.__circuit.ports.valid[0])
@@ -440,7 +438,7 @@ class FifoRegWrapper(GemstoneGenerator):
             self.wire(self.ports.ready_out, full_inverter.ports.O)
         else:
             self.wire(self.ports.ASYNCRESET,
-                  self.__circuit.ports.rst)
+                      self.__circuit.ports.rst)
             self.wire(self.ports.valid_in, self.__circuit.ports.valid0[0])
             self.wire(self.ports.valid_out, self.__circuit.ports.valid1[0])
             self.wire(self.ports.ready_in, self.__circuit.ports.ready1[0])
@@ -448,7 +446,6 @@ class FifoRegWrapper(GemstoneGenerator):
 
             self.wire(self.ports.start_fifo, self.__circuit.ports.start_fifo[0])
             self.wire(self.ports.end_fifo, self.__circuit.ports.end_fifo[0])
-
 
     def name(self):
         return f"FifoRegWrapper_{self.width}"

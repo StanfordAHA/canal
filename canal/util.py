@@ -104,7 +104,7 @@ def create_uniform_interconnect(width: int,
 
     interconnect_x_min = num_fabric_cols_removed if num_fabric_cols_removed > 0 else x_min
     interconnect_x_max = x_max
-    interconnect_y_min = y_min-1 if give_north_io_sbs else y_min
+    interconnect_y_min = y_min - 1 if give_north_io_sbs else y_min
     interconnect_y_max = y_max
 
     # create tiles and set cores
@@ -122,12 +122,12 @@ def create_uniform_interconnect(width: int,
                 sb = ImranSwitchBox(x, y, num_track, track_width)
             else:
                 raise NotImplementedError(sb_type)
-            
+
             tile_circuit = Tile(x, y, track_width, sb, tile_height)
 
             interconnect.add_tile(tile_circuit)
             core = column_core_fn(x, y)
- 
+
             core_interface = CoreInterface(core)
             interconnect.set_core(x, y, core_interface)
 
@@ -136,7 +136,7 @@ def create_uniform_interconnect(width: int,
                 additional_core_interface = CoreInterface(additional_core)
                 tile_circuit.add_additional_core(additional_core_interface,
                                                  CoreConnectionType.SB | CoreConnectionType.CB)
-                
+
     # Handle North I/O if giving north I/O SB
     if give_north_io_sbs:
         for x in range(x_min, x_max + 1):
@@ -144,10 +144,10 @@ def create_uniform_interconnect(width: int,
                 # skip if the tiles is already created
                 tile = interconnect.get_tile(x, y)
                 if tile is not None:
-                    continue 
+                    continue
                 # compute the number of tracks
                 num_track = compute_num_tracks(x_min, y_min,
-                                            x, y, track_info)
+                                               x, y, track_info)
                 # create switch based on the type passed in
                 if sb_type == SwitchBoxType.Disjoint:
                     if tall_north_io_sbs:
@@ -156,24 +156,26 @@ def create_uniform_interconnect(width: int,
 
                 elif sb_type == SwitchBoxType.Wilton:
                     if tall_north_io_sbs:
-                        sb = TallWiltonSwitchBox(x, y, num_track, num_tall_sb_horizontal_tracks, track_width)
+                        sb = TallWiltonSwitchBox(x, y, num_track,
+                                                 num_tall_sb_horizontal_tracks, track_width)
                     else:
                         sb = WiltonSwitchBox(x, y, num_track, track_width)
 
                 elif sb_type == SwitchBoxType.Imran:
                     if tall_north_io_sbs:
-                        sb = TallImranSwitchBox(x, y, num_track, num_tall_sb_horizontal_tracks, track_width)
+                        sb = TallImranSwitchBox(x, y, num_track,
+                                                num_tall_sb_horizontal_tracks, track_width)
                     else:
                         sb = ImranSwitchBox(x, y, num_track, track_width)
 
                 else:
                     raise NotImplementedError(sb_type)
-                
+
                 tile_circuit = Tile(x, y, track_width, sb, tile_height, isTallTile=tall_north_io_sbs)
 
                 interconnect.add_tile(tile_circuit)
                 core = column_core_fn(x, y)
-    
+
                 core_interface = CoreInterface(core)
                 interconnect.set_core(x, y, core_interface)
 
@@ -181,22 +183,21 @@ def create_uniform_interconnect(width: int,
                 if additional_core is not None:
                     additional_core_interface = CoreInterface(additional_core)
                     tile_circuit.add_additional_core(additional_core_interface,
-                                                    CoreConnectionType.SB | CoreConnectionType.CB)
-                    
+                                                     CoreConnectionType.SB | CoreConnectionType.CB)
+
     # Handle South Matrix unit I/O tiles if they exist
     if using_matrix_unit and IOSide.South in io_sides:
         for x in range(x_min, x_max + 1):
-            for y in range(y_max+1, height):
+            for y in range(y_max + 1, height):
                 core = column_core_fn(x, y)
                 # if core is None:
                 #     continue
-            
+
                 sb = SwitchBox(x, y, 0, track_width, [])
                 tile_circuit = Tile(x, y, track_width, sb, tile_height)
-                interconnect.add_tile(tile_circuit)   
+                interconnect.add_tile(tile_circuit)
                 core_interface = CoreInterface(core)
                 interconnect.set_core(x, y, core_interface)
-
 
     # create tiles without SB
     for x in range(width):
@@ -206,10 +207,10 @@ def create_uniform_interconnect(width: int,
             if tile is not None:
                 continue
             core = column_core_fn(x, y)
-           
+
             sb = SwitchBox(x, y, 0, track_width, [])
             tile_circuit = Tile(x, y, track_width, sb, tile_height)
-            interconnect.add_tile(tile_circuit)   
+            interconnect.add_tile(tile_circuit)
             core_interface = CoreInterface(core)
             interconnect.set_core(x, y, core_interface)
 
@@ -219,7 +220,6 @@ def create_uniform_interconnect(width: int,
     for port_name in port_names:
         conns = port_connections[port_name]
         interconnect.set_core_connection_all(port_name, conns)
-
 
     if inter_core_connection is not None:
         interconnect.set_inter_core_connection(inter_core_connection)
@@ -232,31 +232,31 @@ def create_uniform_interconnect(width: int,
     for track_len in track_lens:
         for _ in range(track_info[track_len]):
             # This function connects neighboring switchboxes to each other (North, south east, west)
-            # Pass 1: Contiguous tile array fabric 
+            # Pass 1: Contiguous tile array fabric
             interconnect.connect_switchbox(interconnect_x_min, interconnect_y_min, interconnect_x_max,
                                            interconnect_y_max,
                                            track_len,
                                            current_track,
                                            InterconnectPolicy.Ignore)
 
-             # (Optional) Pass 2: For any unconnected I/O tiles due to "num_fabric_cols_removed" > 0
+            # (Optional) Pass 2: For any unconnected I/O tiles due to "num_fabric_cols_removed" > 0
             if give_north_io_sbs and num_fabric_cols_removed > 0:
                 interconnect.connect_switchbox(x_min, interconnect_y_min, interconnect_x_max,
-                                            interconnect_y_min,
-                                            track_len,
-                                            current_track,
-                                            InterconnectPolicy.Ignore)
+                                               interconnect_y_min,
+                                               track_len,
+                                               current_track,
+                                               InterconnectPolicy.Ignore)
             current_track += 1
 
-    # connect the tall switchboxes if they exist 
+    # connect the tall switchboxes if they exist
     if give_north_io_sbs and tall_north_io_sbs:
         for current_track in range(num_track, num_tall_sb_horizontal_tracks):
-            interconnect.connect_switchbox(x_min, interconnect_y_min, interconnect_x_max,
-                                                interconnect_y_min,
-                                                track_len,
-                                                current_track,
-                                                InterconnectPolicy.Ignore, isTallConnection=True)
-
+            interconnect.connect_switchbox(x_min, interconnect_y_min,
+                                           interconnect_x_max,
+                                           interconnect_y_min,
+                                           track_len,
+                                           current_track,
+                                           InterconnectPolicy.Ignore, isTallConnection=True)
 
     # insert io
     connect_io(interconnect, io_conn["in"], io_conn["out"], io_sides, give_north_io_sbs, num_fabric_cols_removed)
@@ -269,10 +269,11 @@ def create_uniform_interconnect(width: int,
 
         pipeline_regs_to_add = pipeline_reg.copy()
         if tile.isTallTile:
-            for track in range(tile.switchbox.num_track, tile.switchbox.num_horizontal_track):
+            for track in range(tile.switchbox.num_track,
+                               tile.switchbox.num_horizontal_track):
                 pipeline_regs_to_add.append((track, SwitchBoxSide.WEST))
                 pipeline_regs_to_add.append((track, SwitchBoxSide.EAST))
-        
+
         for track, side in pipeline_regs_to_add:
             if tile.switchbox is None or tile.switchbox.num_track == 0:
                 continue
@@ -281,10 +282,11 @@ def create_uniform_interconnect(width: int,
 
     return interconnect
 
-# This function connects tiles that are at the edge to nearby tiles in the 
-# appropriate direction (North, west, east, or south neighbor). Makes this 
+
+# This function connects tiles that are at the edge to nearby tiles in the
+# appropriate direction (North, west, east, or south neighbor). Makes this
 # connection in the interconnect graph. Actual magma connection is done in
-# a separate pass. 
+# a separate pass.
 def connect_io(interconnect: InterconnectGraph,
                input_port_conn: Dict[str, List[int]],
                output_port_conn: Dict[str, List[int]],
@@ -300,7 +302,7 @@ def connect_io(interconnect: InterconnectGraph,
 
     interconnect_x_min = num_fabric_cols_removed if num_fabric_cols_removed > 0 else x_min
     interconnect_x_max = x_max
-    interconnect_y_min = y_min-1 if give_north_io_sbs else y_min
+    interconnect_y_min = y_min - 1 if give_north_io_sbs else y_min
     interconnect_y_max = y_max
 
     # compute tiles and sides
@@ -309,17 +311,18 @@ def connect_io(interconnect: InterconnectGraph,
             if x in range(interconnect_x_min, interconnect_x_max + 1) and \
                     y in range(interconnect_y_min, interconnect_y_max + 1):
                 continue
-           
+
             # make sure that these margins tiles have empty switch boxes
             tile = interconnect[(x, y)]
 
             if tile.core.core is None:
                 continue
 
-            # This means the tile isn't an I/O that needs to be connected using this function 
+            # This means the tile isn't an I/O that needs to be connected using this function
             if tile.switchbox.num_track > 0:
-                continue 
-            #assert tile.switchbox.num_track == 0
+                continue
+
+            # assert tile.switchbox.num_track == 0
 
             # compute the nearby tile
             if x in range(0, interconnect_x_min):
@@ -348,7 +351,6 @@ def connect_io(interconnect: InterconnectGraph,
                                                        SwitchBoxIO.SB_OUT)
                             sb_node.add_edge(port_node)
 
-            
             for output_port, conn in output_port_conn.items():
                 # output is IO to fabric
                 if output_port in tile.ports:
