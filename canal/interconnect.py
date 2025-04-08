@@ -577,7 +577,6 @@ class Interconnect(generator.Generator):
                 for tag in tags:
                     if tag.tag_name == pnr_tag:
                         if 'P' in pnr_tag or 'p' in pnr_tag:
-                            # result = core.get_config_bitstream([instr, active_core_ports[instance_name]])
                             result = core.get_config_bitstream(instr, active_core_ports=active_core_ports[instance_name])
                         else:
                             result = core.get_config_bitstream(instr)
