@@ -573,16 +573,14 @@ class Interconnect(generator.Generator):
                         if not candidate["nodes"]:
                             continue
                         # Case 1: Append candidate if current segment's last node matches candidate's first node.
-                        if (isinstance(merged_nodes[-1], RegisterNode) and isinstance(candidate["nodes"][0], RegisterNode) and
-                                reg_key(merged_nodes[-1]) == reg_key(candidate["nodes"][0])):
+                        if (isinstance(merged_nodes[-1], RegisterNode) and isinstance(candidate["nodes"][0], RegisterNode) and reg_key(merged_nodes[-1]) == reg_key(candidate["nodes"][0])):
                             merged_nodes.extend(candidate["nodes"][1:])  # skip joint REG node
                             used[j] = True
                             merged = True
                             changed = True
                             break
                         # Case 2: Prepend candidate if current segment's first node matches candidate's last node.
-                        if (isinstance(merged_nodes[0], RegisterNode) and isinstance(candidate["nodes"][-1], RegisterNode) and
-                                reg_key(merged_nodes[0]) == reg_key(candidate["nodes"][-1])):
+                        if (isinstance(merged_nodes[0], RegisterNode) and isinstance(candidate["nodes"][-1], RegisterNode) and reg_key(merged_nodes[0]) == reg_key(candidate["nodes"][-1])):
                             merged_nodes = candidate["nodes"][:-1] + merged_nodes  # skip joint REG node
                             used[j] = True
                             merged = True
@@ -747,7 +745,8 @@ class Interconnect(generator.Generator):
                 for tag in tags:
                     if tag.tag_name == pnr_tag:
                         if 'P' in pnr_tag or 'p' in pnr_tag:
-                            result = core.get_config_bitstream(instr, active_core_ports=active_core_ports[instance_name], full_instance_name=full_instance_name)
+                            result = core.get_config_bitstream(instr, active_core_ports=active_core_ports[instance_name],
+                                                               full_instance_name=full_instance_name)
                         else:
                             result = core.get_config_bitstream(instr)
                         has_configured = True
