@@ -265,6 +265,7 @@ class SB(InterconnectConfigurable):
         self.instance_name = self.name()
 
         # ready valid interface
+        self._wire_flush()
         self.__wire_reg_reset()
         self.__connect_nodes_fanin()
         self.__lift_ready_valid()
@@ -369,6 +370,15 @@ class SB(InterconnectConfigurable):
             self.wire(and_gate.ports.I1, invert.ports.O)
             self.wire(reg.ports.CE, self.convert(and_gate.ports.O[0],
                                                  magma.enable))
+
+    def _wire_flush(self):
+        if len(self.regs) == 0:
+            return
+        # Only for ready valid mode
+        if self.ready_valid:
+            self.add_port("flush", magma.In(magma.BitIn))
+            for (_, reg) in self.regs.values():
+                self.wire(self.ports.flush, reg.ports.flush)
 
     def __wire_reg_reset(self):
         # only for ready valid mode
@@ -723,7 +733,7 @@ class TileCircuit(GemstoneGenerator):
                         self.wire(self.convert(self.ports[valid_port_name], magma.Bits[1]), core_valid_port)
                         self.wire(self.convert(core_ready_port, magma.bit), self.ports[ready_port_name])
 
-                        continue 
+                        continue
 
                     if "io2glb" in port_name:
                         ready_port_name = port_name + "_ready"
@@ -741,7 +751,7 @@ class TileCircuit(GemstoneGenerator):
                         self.wire(self.convert(core_valid_port, magma.bit), self.ports[valid_port_name])
                         self.wire(self.convert(self.ports[ready_port_name], magma.Bits[1]), core_ready_port)
                         continue
-                    
+
                 # input ports
                 if len(port_node) == 0:
                     assert bit_width == port_node.width
@@ -1043,6 +1053,12 @@ class TileCircuit(GemstoneGenerator):
         for clk_port in clk_ports:
             self.wire(self.ports.clk, clk_port)
 
+    def __wire_flush_to_sbs(self):
+        for _, switchbox in self.sbs.items():
+            if len(switchbox.regs) == 0:
+                return
+            self.wire(self.ports.flush[0], switchbox.ports.flush)
+
     def __should_add_config(self):
         # a introspection on itself to determine whether to add config
         # or not
@@ -1082,6 +1098,7 @@ class TileCircuit(GemstoneGenerator):
         self.__add_stall()
         self.__add_reset()
         self.__add_clk()
+        self.__wire_flush_to_sbs()
 
 
         # see if we really need to add config or not
