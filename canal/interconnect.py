@@ -504,36 +504,30 @@ class Interconnect(generator.Generator):
 
     def get_bogus_init_config(self, node_track: str, x: int, y: int, id_to_name: Dict[str, str],
                               reg_loc_to_id: Dict[Tuple[int, int], List[str]], id_to_metadata):
-        print(f"Checking for bonus init config at {node_track} at {x}, {y}")
-        print(reg_loc_to_id)
         matching_reg_list = reg_loc_to_id[(x, y)]
         for reg in matching_reg_list:
             reg_full_name = id_to_name[reg]
             if node_track in reg_full_name:
                 if reg in id_to_metadata:
                     reg_metadata = id_to_metadata[reg]
-                    print(f"This regs metadata: {reg_metadata}")
                     extra_data_ = int(reg_metadata['extra_data'])
                     if extra_data_ == 1:
-                        print(f"Added bogus data!!!")
+                        print(f"INFO: Added interconnect FIFO bogus data at {node_track} at {x}, {y}")
                         return True
 
         return False
 
     def get_bogus_num_config(self, node_track: str, x: int, y: int, id_to_name: Dict[str, str],
                              reg_loc_to_id: Dict[Tuple[int, int], List[str]], id_to_metadata):
-        print(f"Checking for bonus init config at {node_track} at {x}, {y}")
-        print(reg_loc_to_id)
         matching_reg_list = reg_loc_to_id[(x, y)]
         for reg in matching_reg_list:
             reg_full_name = id_to_name[reg]
             if node_track in reg_full_name:
                 if reg in id_to_metadata:
                     reg_metadata = id_to_metadata[reg]
-                    print(f"This regs metadata: {reg_metadata}")
                     extra_data_ = int(reg_metadata['extra_data'])
                     if extra_data_ > 0:
-                        print(f"Added bogus data!!!")
+                        print(f"INFO: Added interconnect FIFO bogus data at {node_track} at {x}, {y}")
                         return extra_data_
         return 0
 
@@ -621,27 +615,6 @@ class Interconnect(generator.Generator):
 
     def get_route_bitstream(self, routes: Dict[str, List[List[Node]]], use_fifo: bool = False,
                             id_to_name=None, reg_loc_to_id=None, id_to_metadata=None):
-
-        # TODO: For debugging only, can remove these when things get steady
-        # with open("/aha/route_pre_merge.txt", "w") as file:
-        #     for route_name, segments in routes.items():
-        #         file.write(f"\n{route_name}:\n")
-        #         for i, segment in enumerate(segments):
-        #             formatted_nodes = [f"({str(node)}, {node.x}, {node.y})" for node in segment]
-        #             file.write(f"\n  Segment {i}: {' -> '.join(formatted_nodes)}")
-
-        # Merge segments splitted by REG node if fifo is enabled
-        if use_fifo:
-            routes = self.merge_segments_across_routes(routes)
-
-        # TODO: For debugging only, can remove these when things get steady
-        # with open("/aha/route_post_merge.txt", "w") as file:
-        #     for route_name, segments in routes.items():
-        #         file.write(f"\n{route_name}:\n")
-        #         for i, segment in enumerate(segments):
-        #             formatted_nodes = [f"({str(node)}, {node.x}, {node.y})" for node in segment]
-        #             file.write(f"\n  Segment {i}: {' -> '.join(formatted_nodes)}")
-
         result = []
         for _, route in routes.items():
             for segment in route:
@@ -668,10 +641,8 @@ class Interconnect(generator.Generator):
                         if use_fifo:
                             if isinstance(next_node, RegisterMuxNode) and isinstance(pre_node, RegisterNode):
                                 if reg_loc_to_id is None:
-                                    print("No reg_loc_to_id provided. Skipping FIFO configuration")
                                     bogus_init_num = 0
                                 else:
-                                    print("Have reg_loc_to_id - trying to configure FIFO")
                                     bogus_init_num = self.get_bogus_num_config(pre_node.name, pre_node.x,
                                                                                pre_node.y, id_to_name, reg_loc_to_id, id_to_metadata)
                                 config = self.__set_fifo_mode(pre_node, start=False, end=False,
@@ -703,11 +674,9 @@ class Interconnect(generator.Generator):
                                 last_node = reg_nodes[idx + 1]
 
                                 if reg_loc_to_id is None:
-                                    print("No reg_loc_to_id provided. Skipping FIFO configuration")
                                     first_node_bogus_init = False
                                     last_node_bogus_init = False
                                 else:
-                                    print("Have reg_loc_to_id - trying to configure FIFO")
                                     first_node_bogus_init = self.get_bogus_init_config(first_node.name, first_node.x,
                                                                                        first_node.y, id_to_name, reg_loc_to_id,
                                                                                        id_to_metadata)
@@ -724,7 +693,7 @@ class Interconnect(generator.Generator):
 
         return result
 
-    def configure_placement(self, x: int, y: int, instr, pnr_tag=None, node_num=None, active_core_ports=None, full_instance_name=None):
+    def configure_placement(self, x: int, y: int, instr, pnr_tag=None, node_num=None, active_core_ports=None):
         instance_name = f"{pnr_tag}{node_num}"
         tile = self.tile_circuits[(x, y)]
         core_: ConfigurableCore = None
@@ -745,8 +714,7 @@ class Interconnect(generator.Generator):
                 for tag in tags:
                     if tag.tag_name == pnr_tag:
                         if 'P' in pnr_tag or 'p' in pnr_tag:
-                            result = core.get_config_bitstream(instr, active_core_ports=active_core_ports[instance_name],
-                                                               full_instance_name=full_instance_name)
+                            result = core.get_config_bitstream(instr, active_core_ports=active_core_ports[instance_name])
                         else:
                             result = core.get_config_bitstream(instr)
                         has_configured = True

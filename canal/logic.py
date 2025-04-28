@@ -57,7 +57,6 @@ class RegFIFO(Generator):
         # control whether to function as a pipeline register or not
         self._fifo_en = self.input("fifo_en", 1)
 
-        # MO: Flush signal HACK
         self._flush = self.input("flush", 1)
         self._bogus_init_num = self.input("bogus_init_num", 2)
 
@@ -114,7 +113,6 @@ class RegFIFO(Generator):
 
         self._num_items = self.var("num_items", clog2(self.depth) + 1)
         # self.wire(self._full, (self._wr_ptr + 1) == self._rd_ptr)
-        # self.wire(self._full, (self._num_items == self.depth) | ~(~self._flush & self._clk_en))
         self.wire(self._full, (self._num_items == self.depth) | self._flush | ~self._clk_en)
         # self.wire(self._full, (self._num_items == self.depth) | self._flush)
         # Experiment to cover latency
@@ -289,7 +287,6 @@ class SplitFifo(Generator):
         clk = self.clock("clk")
         rst = self.reset("rst")
 
-        # MO: Flush signal HACK
         flush = self.input("flush", 1)
         bogus_init = self.input("bogus_init", 1)
 
@@ -383,10 +380,7 @@ class FifoRegWrapper(GemstoneGenerator):
             clk=magma.In(magma.Clock),
             CE=magma.In(magma.Enable),
             ASYNCRESET=magma.In(magma.AsyncReset),
-
-            # MO: Flush signal HACK
             flush=magma.In(magma.Bit),
-
             valid_in=magma.In(magma.Bit),
             valid_out=magma.Out(magma.Bit),
             ready_in=magma.In(magma.Bit),
@@ -411,7 +405,6 @@ class FifoRegWrapper(GemstoneGenerator):
         self.wire(self.ports.CE, self.__circuit.ports.clk_en[0])
         self.wire(self.ports.fifo_en, self.__circuit.ports.fifo_en[0])
 
-        # MO: Flush signal HACK
         self.wire(self.ports.flush, self.__circuit.ports.flush[0])
 
         if self.use_non_split_fifos:

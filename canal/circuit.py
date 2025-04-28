@@ -270,8 +270,6 @@ class SB(InterconnectConfigurable):
         self.instance_name = self.name()
 
         # ready valid interface
-
-        # MO: Flush signal HACK
         self._wire_flush()
         self.__wire_reg_reset()
         self.__connect_nodes_fanin()
@@ -499,7 +497,6 @@ class SB(InterconnectConfigurable):
                     end = self.registers[end_name]
                     self.wire(end.ports.O[0], reg.ports.end_fifo)
 
-                # MO: Flush signal HACK
                 # Set bogus mode
                 bogus_init_name = str(node) + "_bogus_init"
                 if self.use_non_split_fifos:
