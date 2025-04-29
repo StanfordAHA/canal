@@ -1,5 +1,5 @@
 import coreir
-from .cyclone import InterconnectGraph, SwitchBoxSide, SwitchBoxIO, Node,\
+from .cyclone import InterconnectGraph, SwitchBoxSide, SwitchBoxIO, Node, \
     RegisterMuxNode, Tile, SwitchBoxNode, RegisterNode, SwitchBox, PortNode
 import os
 from typing import Dict, List, Tuple, Set, Union

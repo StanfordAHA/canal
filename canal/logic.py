@@ -4,7 +4,7 @@ import kratos
 import math
 import mantle
 from kratos import Generator, posedge, negedge, always_comb, always_ff, clog2, \
-    const
+    const, resize
 from gemstone.generator.generator import Generator as GemstoneGenerator
 from gemstone.generator.from_magma import FromMagma
 from .cyclone import Node, create_name
@@ -39,7 +39,8 @@ class RegFIFO(Generator):
         # CLK and RST
         self._clk = self.clock("clk")
         self._rst_n = self.reset("rst_n")
-        self._clk_en = self.clock_en("clk_en", 1)
+        self._clk_en = self.input("clk_en", 1)
+        # self._clk_en = self.clock_en("clk_en", 1)
 
         # INPUTS
         self._data_in = self.input("data_in",
@@ -55,6 +56,9 @@ class RegFIFO(Generator):
 
         # control whether to function as a pipeline register or not
         self._fifo_en = self.input("fifo_en", 1)
+
+        self._flush = self.input("flush", 1)
+        self._bogus_init_num = self.input("bogus_init_num", 2)
 
         if self.parallel:
             self._parallel_load = self.input("parallel_load", 1)
@@ -109,7 +113,8 @@ class RegFIFO(Generator):
 
         self._num_items = self.var("num_items", clog2(self.depth) + 1)
         # self.wire(self._full, (self._wr_ptr + 1) == self._rd_ptr)
-        self.wire(self._full, self._num_items == self.depth)
+        self.wire(self._full, (self._num_items == self.depth) | self._flush | ~self._clk_en)
+        # self.wire(self._full, (self._num_items == self.depth) | self._flush)
         # Experiment to cover latency
         self.wire(self._almost_full,
                   self._num_items >= (self.depth - self.almost_full_diff))
@@ -131,8 +136,7 @@ class RegFIFO(Generator):
             self.add_code(self.rd_ptr_ff_parallel)
             self.wire(self._parallel_out, self._reg_array)
             self.wire(self._write,
-                      self._push_en & ~self._passthru & (
-                              ~self._full | (self._parallel_read)))
+                      self._push_en & ~self._passthru & (~self._full | (self._parallel_read)))
         else:
             # Don't want to write when full at all for decoupling
             self.wire(self._write, self._push_en & ~self._passthru & (~self._full))
@@ -147,64 +151,82 @@ class RegFIFO(Generator):
     def rd_ptr_ff(self):
         if ~self._rst_n:
             self._rd_ptr = 0
-        elif self._read:
-            self._rd_ptr = self._rd_ptr + 1
+        elif self._flush:
+            self._rd_ptr = 0
+        elif self._clk_en:
+            if self._read:
+                self._rd_ptr = self._rd_ptr + 1
 
     @always_ff((posedge, "clk"), (negedge, "rst_n"))
     def rd_ptr_ff_parallel(self):
         if ~self._rst_n:
             self._rd_ptr = 0
-        elif self._parallel_load | self._parallel_read:
+        elif self._flush:
             self._rd_ptr = 0
-        elif self._read:
-            self._rd_ptr = self._rd_ptr + 1
+        elif self._clk_en:
+            if self._parallel_load | self._parallel_read:
+                self._rd_ptr = 0
+            elif self._read:
+                self._rd_ptr = self._rd_ptr + 1
 
     @always_ff((posedge, "clk"), (negedge, "rst_n"))
     def wr_ptr_ff(self):
         if ~self._rst_n:
             self._wr_ptr = 0
-        elif self._write:
-            if self._wr_ptr == (self.depth - 1):
-                self._wr_ptr = 0
-            else:
-                self._wr_ptr = self._wr_ptr + 1
+        elif self._flush:
+            self._wr_ptr = resize(self._bogus_init_num, self._wr_ptr.width)
+        elif self._clk_en:
+            if self._write:
+                if self._wr_ptr == (self.depth - 1):
+                    self._wr_ptr = 0
+                else:
+                    self._wr_ptr = self._wr_ptr + 1
 
     @always_ff((posedge, "clk"), (negedge, "rst_n"))
     def wr_ptr_ff_parallel(self):
         if ~self._rst_n:
             self._wr_ptr = 0
-        elif self._parallel_load:
-            self._wr_ptr = self._num_load[max(1, clog2(self.depth)) - 1, 0]
-        elif self._parallel_read:
-            if self._push:
-                self._wr_ptr = 1
-            else:
-                self._wr_ptr = 0
-        elif self._write:
-            self._wr_ptr = self._wr_ptr + 1
-            # if self._wr_ptr == (self.depth - 1):
-            #     self._wr_ptr = 0
-            # else:
-            #     self._wr_ptr = self._wr_ptr + 1
+        elif self._flush:
+            self._wr_ptr = resize(self._bogus_init_num, self._wr_ptr.width)
+        elif self._clk_en:
+            if self._parallel_load:
+                self._wr_ptr = self._num_load[max(1, clog2(self.depth)) - 1, 0]
+            elif self._parallel_read:
+                if self._push:
+                    self._wr_ptr = 1
+                else:
+                    self._wr_ptr = 0
+            elif self._write:
+                self._wr_ptr = self._wr_ptr + 1
+                # if self._wr_ptr == (self.depth - 1):
+                #     self._wr_ptr = 0
+                # else:
+                #     self._wr_ptr = self._wr_ptr + 1
 
     @always_ff((posedge, "clk"), (negedge, "rst_n"))
     def reg_array_ff(self):
         if ~self._rst_n:
             self._reg_array = 0
-        elif self._write:
-            self._reg_array[self._wr_ptr] = self._data_in
+        elif self._flush:
+            self._reg_array = 0
+        elif self._clk_en:
+            if self._write:
+                self._reg_array[self._wr_ptr] = self._data_in
 
     @always_ff((posedge, "clk"), (negedge, "rst_n"))
     def reg_array_ff_parallel(self):
         if ~self._rst_n:
             self._reg_array = 0
-        elif self._parallel_load:
-            self._reg_array = self._parallel_in
-        elif self._write:
-            if self._parallel_read:
-                self._reg_array[0] = self._data_in
-            else:
-                self._reg_array[self._wr_ptr] = self._data_in
+        elif self._flush:
+            self._reg_array = 0
+        elif self._clk_en:
+            if self._parallel_load:
+                self._reg_array = self._parallel_in
+            elif self._write:
+                if self._parallel_read:
+                    self._reg_array[0] = self._data_in
+                else:
+                    self._reg_array[self._wr_ptr] = self._data_in
 
     @always_comb
     def data_out_ff(self):
@@ -215,40 +237,47 @@ class RegFIFO(Generator):
 
     @always_comb
     def valid_comb(self):
-        self._valid = ((~self._empty) | self._passthru)
+        self._valid = ((~self._empty & ~self._flush & self._clk_en) | self._passthru)
+        # self._valid = ((~self._empty & ~self._flush) | self._passthru)
 
     @always_ff((posedge, "clk"), (negedge, "rst_n"))
     def set_num_items(self):
         if ~self._rst_n:
             self._num_items = 0
-        elif self._write & ~self._read:
-            self._num_items = self._num_items + 1
-        elif ~self._write & self._read:
-            self._num_items = self._num_items - 1
+        elif self._flush:
+            self._num_items = resize(self._bogus_init_num, self._num_items.width)
+        elif self._clk_en:
+            if self._write & ~self._read:
+                self._num_items = self._num_items + 1
+            elif ~self._write & self._read:
+                self._num_items = self._num_items - 1
 
     @always_ff((posedge, "clk"), (negedge, "rst_n"))
     def set_num_items_parallel(self):
         if ~self._rst_n:
             self._num_items = 0
-        elif self._parallel_load:
-            # When fetch width > 1, by definition we cannot load
-            # 0 (only fw or fw - 1), but we need to handle this immediate
-            # pass through in these cases
-            if self._num_load == 0:
-                self._num_items = self._push.extend(self._num_items.width)
-            else:
-                self._num_items = self._num_load
-        # One can technically push while a parallel
-        # read is happening...
-        elif self._parallel_read:
-            if self._push:
-                self._num_items = 1
-            else:
-                self._num_items = 0
-        elif self._write & ~self._read:
-            self._num_items = self._num_items + 1
-        elif ~self._write & self._read:
-            self._num_items = self._num_items - 1
+        elif self._flush:
+            self._num_items = resize(self._bogus_init_num, self._num_items.width)
+        elif self._clk_en:
+            if self._parallel_load:
+                # When fetch width > 1, by definition we cannot load
+                # 0 (only fw or fw - 1), but we need to handle this immediate
+                # pass through in these cases
+                if self._num_load == 0:
+                    self._num_items = self._push.extend(self._num_items.width)
+                else:
+                    self._num_items = self._num_load
+            # One can technically push while a parallel
+            # read is happening...
+            elif self._parallel_read:
+                if self._push:
+                    self._num_items = 1
+                else:
+                    self._num_items = 0
+            elif self._write & ~self._read:
+                self._num_items = self._num_items + 1
+            elif ~self._write & self._read:
+                self._num_items = self._num_items - 1
 
 
 class SplitFifo(Generator):
@@ -257,6 +286,9 @@ class SplitFifo(Generator):
         self.width = width
         clk = self.clock("clk")
         rst = self.reset("rst")
+
+        flush = self.input("flush", 1)
+        bogus_init = self.input("bogus_init", 1)
 
         data_in = self.input("data_in", width)
         data_out = self.output("data_out", width)
@@ -281,18 +313,21 @@ class SplitFifo(Generator):
         fifo_en = self.input("fifo_en", 1)
 
         # need to add clock enables
-        clk_en = self.clock_en("clk_en")
+        # clk_en = self.clock_en("clk_en")
+        clk_en = self.input("clk_en", 1)
 
         self.wire(ready_in, ready1.and_(~start_fifo))
-        self.wire(ready0, kratos.ternary(fifo_en, empty.or_(ready_in), clk_en))
+        self.wire(ready0, kratos.ternary(fifo_en, (empty.or_(ready_in)) & ~flush & clk_en, clk_en))
         self.wire(valid_in, valid0.and_(~end_fifo))
-        self.wire(valid1, kratos.ternary(fifo_en, (~empty).or_(valid_in), clk_en))
+        self.wire(valid1, kratos.ternary(fifo_en, ((~empty).or_(valid_in)) & ~flush & clk_en, clk_en))
 
         self.wire(data_out, kratos.ternary(empty.and_(fifo_en), data_in, value))
 
         @always_ff((posedge, clk), (posedge, rst))
         def value_logic():
             if rst:
+                value = 0
+            elif flush:
                 value = 0
             elif clk_en:
                 if (~fifo_en).or_(valid0.and_(ready0).and_(~(empty.and_(ready1).and_(valid1)))):
@@ -302,6 +337,11 @@ class SplitFifo(Generator):
         def empty_logic():
             if rst:
                 empty_n = 0
+            elif flush:
+                if bogus_init:
+                    empty_n = 1
+                else:
+                    empty_n = 0
             elif clk_en:
                 if fifo_en:
                     if valid1.and_(ready1):
@@ -340,6 +380,7 @@ class FifoRegWrapper(GemstoneGenerator):
             clk=magma.In(magma.Clock),
             CE=magma.In(magma.Enable),
             ASYNCRESET=magma.In(magma.AsyncReset),
+            flush=magma.In(magma.Bit),
             valid_in=magma.In(magma.Bit),
             valid_out=magma.Out(magma.Bit),
             ready_in=magma.In(magma.Bit),
@@ -347,12 +388,16 @@ class FifoRegWrapper(GemstoneGenerator):
             fifo_en=magma.In(magma.Bit)
         )
 
-        if not(self.use_non_split_fifos):
+        if not self.use_non_split_fifos:
             self.add_ports(
                 start_fifo=magma.In(magma.Bit),
-                end_fifo=magma.In(magma.Bit)
+                end_fifo=magma.In(magma.Bit),
+                bogus_init=magma.In(magma.Bit)
             )
-           
+        else:
+            self.add_ports(
+                bogus_init=magma.In(magma.Bits[2])
+            )
 
         self.wire(self.ports.I, self.__circuit.ports.data_in)
         self.wire(self.ports.O, self.__circuit.ports.data_out)
@@ -360,14 +405,21 @@ class FifoRegWrapper(GemstoneGenerator):
         self.wire(self.ports.CE, self.__circuit.ports.clk_en[0])
         self.wire(self.ports.fifo_en, self.__circuit.ports.fifo_en[0])
 
+        self.wire(self.ports.flush, self.__circuit.ports.flush[0])
+
+        if self.use_non_split_fifos:
+            self.wire(self.ports.bogus_init, self.__circuit.ports.bogus_init_num)
+        else:
+            self.wire(self.ports.bogus_init, self.__circuit.ports.bogus_init[0])
+
         if self.use_non_split_fifos:
             async_inverter = FromMagma(mantle.Not)
             async_inverter.instance_name = "async_inverter"
 
             self.wire(self.ports.ASYNCRESET,
-            self.convert(async_inverter.ports.I, magma.asyncreset))
+                      self.convert(async_inverter.ports.I, magma.asyncreset))
             self.wire(self.convert(async_inverter.ports.O, magma.asyncreset),
-                    self.__circuit.ports.rst_n)
+                      self.__circuit.ports.rst_n)
 
             self.wire(self.ports.valid_in, self.__circuit.ports.push[0])
             self.wire(self.ports.valid_out, self.__circuit.ports.valid[0])
@@ -379,7 +431,7 @@ class FifoRegWrapper(GemstoneGenerator):
             self.wire(self.ports.ready_out, full_inverter.ports.O)
         else:
             self.wire(self.ports.ASYNCRESET,
-                  self.__circuit.ports.rst)
+                      self.__circuit.ports.rst)
             self.wire(self.ports.valid_in, self.__circuit.ports.valid0[0])
             self.wire(self.ports.valid_out, self.__circuit.ports.valid1[0])
             self.wire(self.ports.ready_in, self.__circuit.ports.ready1[0])
@@ -387,7 +439,6 @@ class FifoRegWrapper(GemstoneGenerator):
 
             self.wire(self.ports.start_fifo, self.__circuit.ports.start_fifo[0])
             self.wire(self.ports.end_fifo, self.__circuit.ports.end_fifo[0])
-
 
     def name(self):
         return f"FifoRegWrapper_{self.width}"

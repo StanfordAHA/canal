@@ -268,7 +268,6 @@ class Interconnect(generator.Generator):
                             self.wire(p, tile.ports[sb_name + "_ready"])
                             self.__interface[ready_name] = sb_port
 
-
     def skip_margin_connection(self, tile):
         if self.give_north_io_sbs:
             return tile.switchbox.num_track > 0 and tile.y != 0
@@ -276,12 +275,12 @@ class Interconnect(generator.Generator):
             return tile.switchbox.num_track > 0
 
     def dont_lift_port(self, tile, port_name):
-        # dont lift f2io and io2f ports to interconnect level since these connect to the SB within the I/O tile 
+        # dont lift f2io and io2f ports to interconnect level since these connect to the SB within the I/O tile
         return self.give_north_io_sbs and (tile.y == 0 and ("f2io" in port_name or "io2f" in port_name))
 
     # This function makes the tile-to-tile connection for the margin tiles
     # And lifts up ports at the "edge" of the Interconnect graph as ports for the
-    # Interconnect module 
+    # Interconnect module
     def __connect_margin_tiles(self):
         # connect these margin tiles
         # margin tiles have empty switchbox
@@ -372,7 +371,6 @@ class Interconnect(generator.Generator):
                                 self.wire(tile_port[idx], next_port)
                                 if self.ready_valid:
                                     raise RuntimeError("Not supported")
-
 
     def __ground_ports(self):
         # this is a pass to ground every sb ports that's not connected
@@ -491,10 +489,12 @@ class Interconnect(generator.Generator):
 
         return res
 
-    def __set_fifo_mode(self, node: RegisterNode, start: bool, end: bool, use_non_split_fifos: bool = False):
+    def __set_fifo_mode(self, node: RegisterNode, start: bool, end: bool, use_non_split_fifos: bool = False,
+                        bogus_init: bool = False, bogus_init_num: int = 0):
         x, y = node.x, node.y
         tile = self.tile_circuits[(x, y)]
-        config_data = tile.configure_fifo(node, start, end, use_non_split_fifos)
+        config_data = tile.configure_fifo(node, start, end, use_non_split_fifos=use_non_split_fifos,
+                                          bogus_init=bogus_init, bogus_init_num=bogus_init_num)
         res = []
         for reg_addr, feat_addr, data in config_data:
             addr = self.get_config_addr(reg_addr, feat_addr, x, y)
@@ -502,7 +502,119 @@ class Interconnect(generator.Generator):
 
         return res
 
-    def get_route_bitstream(self, routes: Dict[str, List[List[Node]]], use_fifo: bool = False):
+    def get_bogus_init_config(self, node_track: str, x: int, y: int, id_to_name: Dict[str, str],
+                              reg_loc_to_id: Dict[Tuple[int, int], List[str]], id_to_metadata):
+        matching_reg_list = reg_loc_to_id[(x, y)]
+        for reg in matching_reg_list:
+            reg_full_name = id_to_name[reg]
+            if node_track in reg_full_name:
+                if reg in id_to_metadata:
+                    reg_metadata = id_to_metadata[reg]
+                    extra_data_ = int(reg_metadata['extra_data'])
+                    if extra_data_ == 1:
+                        print(f"INFO: Added interconnect FIFO bogus data at {node_track} at {x}, {y}")
+                        return True
+
+        return False
+
+    def get_bogus_num_config(self, node_track: str, x: int, y: int, id_to_name: Dict[str, str],
+                             reg_loc_to_id: Dict[Tuple[int, int], List[str]], id_to_metadata):
+        matching_reg_list = reg_loc_to_id[(x, y)]
+        for reg in matching_reg_list:
+            reg_full_name = id_to_name[reg]
+            if node_track in reg_full_name:
+                if reg in id_to_metadata:
+                    reg_metadata = id_to_metadata[reg]
+                    extra_data_ = int(reg_metadata['extra_data'])
+                    if extra_data_ > 0:
+                        print(f"INFO: Added interconnect FIFO bogus data at {node_track} at {x}, {y}")
+                        return extra_data_
+        return 0
+
+    def merge_segments_across_routes(self, routes: Dict[str, List[List[object]]]) -> Dict[str, List[List[object]]]:
+        '''
+        Merge segments splitted by REG node
+        '''
+        # Flatten segments
+        seg_list = []
+        for route_key, segs in routes.items():
+            for seg in segs:
+                seg_list.append({"route": route_key, "nodes": seg.copy()})
+
+        # Helper function to form a key for register nodes.
+        def reg_key(node: object):
+            # For checking whether reg nodes are the same
+            return (str(node), node.x, node.y)
+
+        # Standard iterative merging on endpoints
+        changed = True
+        while changed:
+            changed = False
+            new_seg_list = []
+            used = [False] * len(seg_list)
+            for i in range(len(seg_list)):
+                if used[i]:
+                    continue
+                merged_route = seg_list[i]["route"]
+                merged_nodes = seg_list[i]["nodes"].copy()
+                merged = True
+                while merged:
+                    merged = False
+                    for j in range(len(seg_list)):
+                        if used[j] or i == j:
+                            continue
+                        candidate = seg_list[j]
+                        if not candidate["nodes"]:
+                            continue
+                        # Case 1: Append candidate if current segment's last node matches candidate's first node.
+                        if (isinstance(merged_nodes[-1], RegisterNode) and isinstance(candidate["nodes"][0], RegisterNode) and reg_key(merged_nodes[-1]) == reg_key(candidate["nodes"][0])):
+                            merged_nodes.extend(candidate["nodes"][1:])  # skip joint REG node
+                            used[j] = True
+                            merged = True
+                            changed = True
+                            break
+                        # Case 2: Prepend candidate if current segment's first node matches candidate's last node.
+                        if (isinstance(merged_nodes[0], RegisterNode) and isinstance(candidate["nodes"][-1], RegisterNode) and reg_key(merged_nodes[0]) == reg_key(candidate["nodes"][-1])):
+                            merged_nodes = candidate["nodes"][:-1] + merged_nodes  # skip joint REG node
+                            used[j] = True
+                            merged = True
+                            changed = True
+                            break
+                new_seg_list.append({"route": merged_route, "nodes": merged_nodes})
+                used[i] = True
+            seg_list = new_seg_list
+
+        # Additional pass: look for same register node in middle point to handle branching
+        # Update the branch segment by prepending the candidate's prefix
+        for seg in seg_list:
+            if seg["nodes"] and isinstance(seg["nodes"][0], RegisterNode):
+                branch_reg = seg["nodes"][0]
+                best_prefix = None
+                # Search all other segments for a candidate that contains branch_reg not at index 0.
+                for candidate in seg_list:
+                    if candidate is seg:
+                        continue
+                    for idx in range(1, len(candidate["nodes"])):
+                        node = candidate["nodes"][idx]
+                        if isinstance(node, RegisterNode) and reg_key(node) == reg_key(branch_reg):
+                            candidate_prefix = candidate["nodes"][:idx + 1]
+                            # Choose the candidate with the longest prefix if multiple exist.
+                            if best_prefix is None or len(candidate_prefix) > len(best_prefix):
+                                best_prefix = candidate_prefix
+                            break  # Only need the first occurrence in this candidate.
+                if best_prefix is not None:
+                    # Prepend the found prefix, skipping the duplicate register at the branch start.
+                    seg["nodes"] = best_prefix + seg["nodes"][1:]
+
+        # Reconstruct the routes dictionary.
+        new_routes: Dict[str, List[List[object]]] = {}
+        for seg in seg_list:
+            key = seg["route"]
+            new_routes.setdefault(key, []).append(seg["nodes"])
+        return new_routes
+
+    def get_route_bitstream(self, routes: Dict[str, List[List[Node]]], use_fifo: bool = False,
+                            id_to_name=None, reg_loc_to_id=None, id_to_metadata=None):
         result = []
         for _, route in routes.items():
             for segment in route:
@@ -518,22 +630,28 @@ class Interconnect(generator.Generator):
                         continue
                     if len(next_node.get_conn_in()) == 1:
                         # no mux created. skip
-                        continue      
+                        continue
                     configs = self.get_node_bitstream_config(pre_node, next_node,)
                     for addr, data in configs:
                         result.append((addr, data))
-             
+
                     # FIFO config for non-split FIFOs
                     use_non_split_fifos = "USE_NON_SPLIT_FIFOS" in os.environ and os.environ.get("USE_NON_SPLIT_FIFOS") == "1"
                     if use_non_split_fifos:
                         if use_fifo:
                             if isinstance(next_node, RegisterMuxNode) and isinstance(pre_node, RegisterNode):
-                                config = self.__set_fifo_mode(pre_node, False, False, True)
+                                if reg_loc_to_id is None:
+                                    bogus_init_num = 0
+                                else:
+                                    bogus_init_num = self.get_bogus_num_config(pre_node.name, pre_node.x,
+                                                                               pre_node.y, id_to_name, reg_loc_to_id, id_to_metadata)
+                                config = self.__set_fifo_mode(pre_node, start=False, end=False,
+                                                              use_non_split_fifos=True, bogus_init_num=bogus_init_num)
                                 result += config
 
-                # FIFO config for split FIFOs 
+                # FIFO config for split FIFOs
                 # Only turn reg pairs into FIFOs if using split FIFOs
-                if not(use_non_split_fifos):       
+                if not use_non_split_fifos:
                     if use_fifo and len(segment) >= 4:
                         reg_nodes = []
                         idx = 0
@@ -543,15 +661,34 @@ class Interconnect(generator.Generator):
                                 if pre_node not in reg_nodes:
                                     reg_nodes.append(pre_node)
                             idx += 1
+
+                        # Try to configure...
+                        # for idx in range(0, len(reg_nodes)):
+                            # rn = reg_nodes[idx]
+                            # rn_config = self.get_bogus_init_config(rn.name, rn.x, rn.y, id_to_name, reg_loc_to_id, id_to_metadata)
                         if len(reg_nodes) != 0:
                             assert len(reg_nodes) != 1, "Cannot have standalone FIFO reg in the segment"
                             assert len(reg_nodes) % 2 == 0, "Must have even number of FIFO regs"
                             for idx in range(0, len(reg_nodes), 2):
                                 first_node = reg_nodes[idx]
                                 last_node = reg_nodes[idx + 1]
-                                config = self.__set_fifo_mode(first_node, True, False)
+
+                                if reg_loc_to_id is None:
+                                    first_node_bogus_init = False
+                                    last_node_bogus_init = False
+                                else:
+                                    first_node_bogus_init = self.get_bogus_init_config(first_node.name, first_node.x,
+                                                                                       first_node.y, id_to_name, reg_loc_to_id,
+                                                                                       id_to_metadata)
+                                    last_node_bogus_init = self.get_bogus_init_config(last_node.name, last_node.x,
+                                                                                      last_node.y, id_to_name, reg_loc_to_id,
+                                                                                      id_to_metadata)
+                                print(f"First node: {first_node.name} - {first_node_bogus_init}")
+                                print(f"Last node: {last_node.name} - {last_node_bogus_init}")
+
+                                config = self.__set_fifo_mode(first_node, start=True, end=False, bogus_init=first_node_bogus_init)
                                 result += config
-                                config = self.__set_fifo_mode(last_node, False, True)
+                                config = self.__set_fifo_mode(last_node, start=False, end=True, bogus_init=last_node_bogus_init)
                                 result += config
 
         return result
@@ -841,4 +978,3 @@ class Interconnect(generator.Generator):
 
     def name(self):
         return "Interconnect"
-
