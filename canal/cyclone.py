@@ -247,9 +247,13 @@ class SwitchBox:
         if isTall:
             self.__sbs: List[List[List[SwitchBoxNode]]] = []
             for side in SwitchBoxSide:
+                if side == SwitchBoxSide.NORTH:
+                    continue # Skip the NORTH side
                 self.__sbs.append([])
 
             for side in SwitchBoxSide:
+                if side == SwitchBoxSide.NORTH:
+                    continue # Skip the NORTH side
                 side_list = []
                 if ((side == SwitchBoxSide.WEST) or (side == SwitchBoxSide.EAST)):
                     num_tracks_to_loop_over = self.num_horizontal_track
@@ -264,6 +268,8 @@ class SwitchBox:
 
             # construct the internal connections
             for side in SwitchBoxSide:
+                if side == SwitchBoxSide.NORTH:
+                    continue # Skip the NORTH side
                 for io in SwitchBoxIO:
                     for track in range(self.num_track):
                         node = SwitchBoxNode(self.x, self.y, track, width,
@@ -340,6 +346,9 @@ class SwitchBox:
     def get_all_sbs(self) -> List[SwitchBoxNode]:
         result = []
         for side in SwitchBoxSide:
+            if self.isTall:
+                if side == SwitchBoxSide.NORTH:
+                    continue # Skip the NORTH side
             num_tracks_to_loop_over = self.num_track
 
             if self.isTall:
@@ -780,6 +789,9 @@ class InterconnectGraph:
                 if includeTallConnections:
                     if side == SwitchBoxSide.EAST or side == SwitchBoxSide.WEST:
                         num_tracks_to_loop_over = switch.num_horizontal_track
+                    if side == SwitchBoxSide.NORTH:
+                        # skip the north side
+                        continue
                 for track in range(num_tracks_to_loop_over):
                     connections.append(SBConnectionType(side, track,
                                                         io))
@@ -1272,15 +1284,15 @@ class SwitchBoxHelper:
 
         for track in range(num_tracks):
             # f_e1
-            result.append((track, SwitchBoxSide.WEST,
-                           mod(w - track, w), SwitchBoxSide.NORTH))
-            result.append((mod(w - track, w), SwitchBoxSide.NORTH,
-                           track, SwitchBoxSide.WEST))
-            # f_e2
-            result.append((track, SwitchBoxSide.NORTH,
-                           mod(track + 1, w), SwitchBoxSide.EAST))
-            result.append((mod(track + 1, w), SwitchBoxSide.EAST,
-                           track, SwitchBoxSide.NORTH))
+            # result.append((track, SwitchBoxSide.WEST,
+            #                mod(w - track, w), SwitchBoxSide.NORTH))
+            # result.append((mod(w - track, w), SwitchBoxSide.NORTH,
+            #                track, SwitchBoxSide.WEST))
+            # # f_e2
+            # result.append((track, SwitchBoxSide.NORTH,
+            #                mod(track + 1, w), SwitchBoxSide.EAST))
+            # result.append((mod(track + 1, w), SwitchBoxSide.EAST,
+            #                track, SwitchBoxSide.NORTH))
             # f_e3
             result.append((track, SwitchBoxSide.SOUTH,
                            mod(w - track - 2, w), SwitchBoxSide.EAST))
@@ -1297,10 +1309,10 @@ class SwitchBoxHelper:
             result.append((track, SwitchBoxSide.EAST,
                            track, SwitchBoxSide.WEST))
             # f_e6
-            result.append((track, SwitchBoxSide.SOUTH,
-                           track, SwitchBoxSide.NORTH))
-            result.append((track, SwitchBoxSide.NORTH,
-                           track, SwitchBoxSide.SOUTH))
+            # result.append((track, SwitchBoxSide.SOUTH,
+            #                track, SwitchBoxSide.NORTH))
+            # result.append((track, SwitchBoxSide.NORTH,
+            #                track, SwitchBoxSide.SOUTH))
 
         additional_result_0 = []
         # Add other actors
@@ -1311,13 +1323,18 @@ class SwitchBoxHelper:
             dest_side = conn[3]
 
             for additional_track in range(num_tracks, num_horizontal_tracks):
-                if source_side != SwitchBoxSide.SOUTH and source_side != SwitchBoxSide.NORTH:
-                    if additional_track % num_tracks == source_track:
-                        additional_result_0.append((additional_track, source_side, dest_track, dest_side))
+                is_redundant_horizontal_conn = (source_side == SwitchBoxSide.WEST and
+                                            dest_side == SwitchBoxSide.EAST) or \
+                                            (source_side == SwitchBoxSide.EAST and
+                                            dest_side == SwitchBoxSide.WEST)
+                if not(is_redundant_horizontal_conn):
+                    if source_side != SwitchBoxSide.SOUTH and source_side != SwitchBoxSide.NORTH:
+                        if additional_track % num_tracks == source_track:
+                            additional_result_0.append((additional_track, source_side, dest_track, dest_side))
 
-                if dest_side != SwitchBoxSide.SOUTH and dest_side != SwitchBoxSide.NORTH:
-                    if additional_track % num_tracks == dest_track:
-                        additional_result_0.append((source_track, source_side, additional_track, dest_side))
+                    if dest_side != SwitchBoxSide.SOUTH and dest_side != SwitchBoxSide.NORTH:
+                        if additional_track % num_tracks == dest_track:
+                            additional_result_0.append((source_track, source_side, additional_track, dest_side))
 
         additional_result_1 = []
         for additional_track in range(num_tracks, num_horizontal_tracks):
@@ -1481,9 +1498,14 @@ if __name__ == "__main__":
             track = f"{item[2]}_{item[3]}"  # Use 3rd and 4th elements
             mux_input_counts[track] += 1  # Increment count
 
-        return dict(mux_input_counts)  # Convert defaultdict to a regular dict
 
-    print(count_mux_inputs(internal_wires_tall_imran))
+        # add up all the values in mux_input_counts
+        total_mux_inputs = sum(mux_input_counts.values())
+
+        return total_mux_inputs, dict(mux_input_counts)  # Convert defaultdict to a regular dict
+
+    total_muxes, mux_dict = count_mux_inputs(internal_wires_tall_imran)
+    print(f"Total MUX inputs: {total_muxes}")
 
     with open("imran.txt", "w") as file:
         for item in internal_wires_imran:
