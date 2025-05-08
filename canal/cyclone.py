@@ -1323,13 +1323,18 @@ class SwitchBoxHelper:
             dest_side = conn[3]
 
             for additional_track in range(num_tracks, num_horizontal_tracks):
-                if source_side != SwitchBoxSide.SOUTH and source_side != SwitchBoxSide.NORTH:
-                    if additional_track % num_tracks == source_track:
-                        additional_result_0.append((additional_track, source_side, dest_track, dest_side))
+                is_redundant_horizontal_conn = (source_side == SwitchBoxSide.WEST and
+                                            dest_side == SwitchBoxSide.EAST) or \
+                                            (source_side == SwitchBoxSide.EAST and
+                                            dest_side == SwitchBoxSide.WEST)
+                if not(is_redundant_horizontal_conn):
+                    if source_side != SwitchBoxSide.SOUTH and source_side != SwitchBoxSide.NORTH:
+                        if additional_track % num_tracks == source_track:
+                            additional_result_0.append((additional_track, source_side, dest_track, dest_side))
 
-                if dest_side != SwitchBoxSide.SOUTH and dest_side != SwitchBoxSide.NORTH:
-                    if additional_track % num_tracks == dest_track:
-                        additional_result_0.append((source_track, source_side, additional_track, dest_side))
+                    if dest_side != SwitchBoxSide.SOUTH and dest_side != SwitchBoxSide.NORTH:
+                        if additional_track % num_tracks == dest_track:
+                            additional_result_0.append((source_track, source_side, additional_track, dest_side))
 
         additional_result_1 = []
         for additional_track in range(num_tracks, num_horizontal_tracks):
