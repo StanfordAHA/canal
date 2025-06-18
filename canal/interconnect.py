@@ -718,7 +718,7 @@ class Interconnect(generator.Generator):
                                 instr, active_core_ports=active_core_ports[instance_name],
                                 x=x, y=y, node_name=node_name, PE_fifos_bypass_config=PE_fifos_bypass_config
                             )
-                        elif 'M' in pnr_tag or 'm' in pnr_tag:
+                        elif 'M' in pnr_tag or 'm' in pnr_tag and os.getenv("DENSE_READY_VALID") == "1":
                             result = core.get_config_bitstream(
                                 instr, active_core_ports=None,
                                 x=x, y=y, node_name=node_name, PE_fifos_bypass_config=None
