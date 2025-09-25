@@ -795,16 +795,12 @@ class Interconnect(generator.Generator):
         if max_num_col is None:
             max_num_col = self.x_max + 1
 
-        if "NUM_FABRIC_COLS_REMOVED" in os.environ:
-            num_fabric_cols_removed = int(os.environ["NUM_FABRIC_COLS_REMOVED"])
-
-        if "MU_OC_0" in os.environ:
-            mu_oc_0 = int(os.environ["MU_OC_0"])
+        num_fabric_cols_removed = int(os.environ.get("NUM_FABRIC_COLS_REMOVED", "0"))
+        mu_oc_0 = int(os.environ.get("MU_OC_0", "0"))
 
         num_mu_io_tiles = int(mu_oc_0 / 2)
         mu_io_start_col = int(((max_num_col - num_fabric_cols_removed) - num_mu_io_tiles) / 2) + num_fabric_cols_removed
         mu_io_end_col = mu_io_start_col + num_mu_io_tiles - 1
-
 
         max_num_row = self.y_max
 
