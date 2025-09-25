@@ -621,7 +621,8 @@ class Interconnect(generator.Generator):
                 for i in range(len(segment) - 1):
                     pre_node = segment[i]
                     next_node = segment[i + 1]
-                    assert next_node in pre_node
+                    if not(isinstance(pre_node, PortNode) and "mu2io" in pre_node.name):
+                        assert next_node in pre_node
                     # notice that there is a corner case where the SB directly connect to the
                     # next tile's CB
                     if (pre_node.x != next_node.x or pre_node.y != next_node.y) and \
@@ -794,11 +795,20 @@ class Interconnect(generator.Generator):
         if max_num_col is None:
             max_num_col = self.x_max + 1
 
+        num_fabric_cols_removed = int(os.environ.get("NUM_FABRIC_COLS_REMOVED", "0"))
+        mu_oc_0 = int(os.environ.get("MU_OC_0", "0"))
+
+        num_mu_io_tiles = int(mu_oc_0 / 2)
+        mu_io_start_col = int(((max_num_col - num_fabric_cols_removed) - num_mu_io_tiles) / 2) + num_fabric_cols_removed
+        mu_io_end_col = mu_io_start_col + num_mu_io_tiles - 1
+
+        max_num_row = self.y_max
+
         graph_path_dict = {}
         for bit_width, graph in self.__graphs.items():
             graph_path = os.path.join(dir_name, f"{bit_width}.graph")
             graph_path_dict[bit_width] = graph_path
-            graph.dump_graph(graph_path, max_num_col)
+            graph.dump_graph(graph_path, max_num_col, max_num_row, mu_io_start_col, mu_io_end_col)
 
         # generate the layout file
         layout_file = os.path.join(dir_name, f"{design_name}.layout")

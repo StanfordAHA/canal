@@ -9,6 +9,7 @@ from typing import List, Tuple, Dict, Union, NamedTuple, Iterator, Set
 from ordered_set import OrderedSet
 from abc import abstractmethod
 from collections import defaultdict
+import os
 
 
 MAX_DEFAULT_DELAY = 100000
@@ -855,7 +856,7 @@ class InterconnectGraph:
             return tile.get_sb(item.side, item.track, item.io) == item
         return False
 
-    def dump_graph(self, filename: str, max_num_col):
+    def dump_graph(self, filename: str, max_num_col, max_num_row, mu_io_start_col, mu_io_end_col):
         with open(filename, "w+") as f:
             padding = "  "
             begin = "BEGIN"
@@ -884,6 +885,19 @@ class InterconnectGraph:
                     write_line(padding * 3 + n.node_str())
                 write_line(padding + end)
 
+            def write_mu_io_conns(tile: Tile):
+                NUM_SIGNALS_PER_MU_IO = 2
+                SOUTH = 1
+                IN = 0
+                MU_IO_NUM_TRACKS = 5 # MU I/O currently supports only 5 tracks
+
+                for i in range(NUM_SIGNALS_PER_MU_IO):
+                    f.write(f"  PORT mu2io_{tile.switchbox.width}_{i} ({tile.x}, {tile.y}, {tile.switchbox.width})\n")
+                    f.write(f"  BEGIN\n")
+                    for track in range(MU_IO_NUM_TRACKS):
+                        f.write(f"      SB ({track}, {tile.x}, {tile.y-1}, {SOUTH}, {IN}, {tile.switchbox.width})\n")
+                    f.write(f"  END\n")
+
             for _, switch in self.__switch_ids.items():
                 write_line(str(switch))
                 write_line(begin)
@@ -894,20 +908,27 @@ class InterconnectGraph:
                                                   str(track_to),
                                                   str(side_to.value)]))
                 write_line(end)
-            for (x, _), tile in self.__tiles.items():
+            for (x, y), tile in self.__tiles.items():
                 if x >= max_num_col:
                     # since x starts from 0, if x == max_num_col, we are actually out of bound
                     continue
                 write_line(str(tile))
-                sbs = tile.switchbox.get_all_sbs()
-                for sb in sbs:
-                    write_conn(sb)
-                for _, node in tile.ports.items():
-                    write_conn(node)
-                for _, reg in tile.switchbox.registers.items():
-                    write_conn(reg)
-                for _, reg_mux in tile.switchbox.reg_muxs.items():
-                    write_conn(reg_mux)
+                is_mu_io = False
+                if os.environ.get("USING_MATRIX_UNIT", "0") == "1":
+                    # Assuming south MU I/O for now
+                    is_mu_io = (x >= mu_io_start_col and x <= mu_io_end_col) and y == max_num_row and tile.switchbox.width > 1
+                if is_mu_io:
+                    write_mu_io_conns(tile)
+                else:
+                    sbs = tile.switchbox.get_all_sbs()
+                    for sb in sbs:
+                        write_conn(sb)
+                    for _, node in tile.ports.items():
+                        write_conn(node)
+                    for _, reg in tile.switchbox.registers.items():
+                        write_conn(reg)
+                    for _, reg_mux in tile.switchbox.reg_muxs.items():
+                        write_conn(reg_mux)
 
     def connect_switchbox(self, x0: int, y0: int, x1: int, y1: int,
                           expected_length: int, track: int,
