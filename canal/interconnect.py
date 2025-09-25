@@ -788,7 +788,7 @@ class Interconnect(generator.Generator):
                     break
         return result
 
-    def dump_pnr(self, dir_name, design_name, max_num_col=None, min_num_col=0):
+    def dump_pnr(self, dir_name, design_name, max_num_col=None):
         if not os.path.isdir(dir_name):
             os.mkdir(dir_name)
         dir_name = os.path.abspath(dir_name)
@@ -796,7 +796,14 @@ class Interconnect(generator.Generator):
             max_num_col = self.x_max + 1
 
         if "NUM_FABRIC_COLS_REMOVED" in os.environ:
-            min_num_col = int(os.environ["NUM_FABRIC_COLS_REMOVED"])
+            num_fabric_cols_removed = int(os.environ["NUM_FABRIC_COLS_REMOVED"])
+
+        if "MU_OC_0" in os.environ:
+            mu_oc_0 = int(os.environ["MU_OC_0"])
+
+        num_mu_io_tiles = int(mu_oc_0 / 2)
+        mu_io_start_col = int(((max_num_col - num_fabric_cols_removed) - num_mu_io_tiles) / 2) + num_fabric_cols_removed
+        mu_io_end_col = mu_io_start_col + num_mu_io_tiles - 1
 
 
         max_num_row = self.y_max
@@ -805,7 +812,7 @@ class Interconnect(generator.Generator):
         for bit_width, graph in self.__graphs.items():
             graph_path = os.path.join(dir_name, f"{bit_width}.graph")
             graph_path_dict[bit_width] = graph_path
-            graph.dump_graph(graph_path, max_num_col, min_num_col, max_num_row)
+            graph.dump_graph(graph_path, max_num_col, max_num_row, mu_io_start_col, mu_io_end_col)
 
         # generate the layout file
         layout_file = os.path.join(dir_name, f"{design_name}.layout")

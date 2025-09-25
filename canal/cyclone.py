@@ -856,7 +856,7 @@ class InterconnectGraph:
             return tile.get_sb(item.side, item.track, item.io) == item
         return False
 
-    def dump_graph(self, filename: str, max_num_col, min_num_col, max_num_row):
+    def dump_graph(self, filename: str, max_num_col, max_num_row, mu_io_start_col, mu_io_end_col):
         with open(filename, "w+") as f:
             padding = "  "
             begin = "BEGIN"
@@ -892,7 +892,7 @@ class InterconnectGraph:
                 MU_IO_NUM_TRACKS = 5 # MU I/O currently supports only 5 tracks
 
                 for i in range(NUM_SIGNALS_PER_MU_IO):
-                    f.write(f"  PORT mu2io_{tile.switchbox.width}_{i} ({tile.x}, {tile.switchbox.width}, {tile.switchbox.width})\n")
+                    f.write(f"  PORT mu2io_{tile.switchbox.width}_{i} ({tile.x}, {tile.y}, {tile.switchbox.width})\n")
                     f.write(f"  BEGIN\n")
                     for track in range(MU_IO_NUM_TRACKS):
                         f.write(f"      SB ({track}, {tile.x}, {tile.y-1}, {SOUTH}, {IN}, {tile.switchbox.width})\n")
@@ -916,7 +916,7 @@ class InterconnectGraph:
                 is_mu_io = False
                 if os.environ.get("USING_MATRIX_UNIT", "0") == "1":
                     # Assuming south MU I/O for now
-                    is_mu_io = x >= min_num_col and y == max_num_row and tile.switchbox.width > 1
+                    is_mu_io = (x >= mu_io_start_col and x <= mu_io_end_col) and y == max_num_row and tile.switchbox.width > 1
                 if is_mu_io:
                     write_mu_io_conns(tile)
                 else:
