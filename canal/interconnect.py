@@ -694,11 +694,12 @@ class Interconnect(generator.Generator):
 
         return result
 
-    def configure_placement(self, x: int, y: int, instr, node_name=None, pnr_tag=None, node_num=None, active_core_ports=None, PE_fifos_bypass_config=None):
+    def configure_placement(self, x: int, y: int, instr, node_name=None, pnr_tag=None, node_num=None, active_core_ports=None, PE_fifos_bypass_config=None, PE_fifos_bypass_dump=None):
         instance_name = f"{pnr_tag}{node_num}"
         tile = self.tile_circuits[(x, y)]
         core_: ConfigurableCore = None
         result = None
+
         if pnr_tag is None:
             # backward-compatible with the old code usage
             result = tile.core.get_config_bitstream(instr)
@@ -717,7 +718,7 @@ class Interconnect(generator.Generator):
                         if 'P' in pnr_tag or 'p' in pnr_tag:
                             result = core.get_config_bitstream(
                                 instr, active_core_ports=active_core_ports[instance_name],
-                                x=x, y=y, node_name=node_name, PE_fifos_bypass_config=PE_fifos_bypass_config
+                                x=x, y=y, instance_name=instance_name, node_name=node_name, PE_fifos_bypass_config=PE_fifos_bypass_config, PE_fifos_bypass_dump=PE_fifos_bypass_dump
                             )
                         elif ('M' in pnr_tag or 'm' in pnr_tag) and os.getenv("DENSE_READY_VALID") == "1":
                             result = core.get_config_bitstream(
