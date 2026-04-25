@@ -730,6 +730,24 @@ class Interconnect(generator.Generator):
                         has_configured = True
                         core_ = core
                         break
+            tile_core_pnr = tile.core.pnr_info()
+            tile_core_pnr_tag = None if isinstance(tile_core_pnr, list) else tile_core_pnr.tag_name
+            if result is None and len(tile.additional_cores) == 0 and tile_core_pnr_tag == pnr_tag:
+                if 'P' in pnr_tag or 'p' in pnr_tag:
+                    result = tile.core.get_config_bitstream(
+                        instr, active_core_ports=active_core_ports[instance_name],
+                        x=x, y=y, instance_name=instance_name, node_name=node_name,
+                        PE_fifos_bypass_config=PE_fifos_bypass_config,
+                        PE_fifos_bypass_dump=PE_fifos_bypass_dump
+                    )
+                elif ('M' in pnr_tag or 'm' in pnr_tag) and os.getenv("DENSE_READY_VALID") == "1":
+                    result = tile.core.get_config_bitstream(
+                        instr, active_core_ports=None,
+                        x=x, y=y, node_name=node_name, PE_fifos_bypass_config=None
+                    )
+                else:
+                    result = tile.core.get_config_bitstream(instr)
+                core_ = tile.core
         assert result is not None, f"Unable to get config bitstream from tile ({x}, {y})"
         assert core_ is not None, f"Unable to get config bitstream from tile ({x}, {y})"
         feature_addr = tile.features().index(core_)
