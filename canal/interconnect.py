@@ -502,14 +502,30 @@ class Interconnect(generator.Generator):
 
         return res
 
+    @staticmethod
+    def _reg_width_mismatch(reg_metadata, node_width):
+        # 2026-10-01: a register block is matched to a routing REG node by tile +
+        # track name only (e.g. "T3_NORTH" at (10, 3)), which is shared by the 1-bit
+        # and the 16/17-bit networks. When the block's bus width is known (garnet
+        # records it in id_to_metadata), a REG node of the other network is not that
+        # register: without this check a 1-bit pipeline register sharing a tile +
+        # track name with a 16-bit d_reg got the d_reg's pre-fill token, shifting
+        # that bit stream by one token (harris RV: no corner detected).
+        if node_width is None or "width" not in reg_metadata:
+            return False
+        return (int(reg_metadata["width"]) > 1) != (int(node_width) > 1)
+
     def get_bogus_init_config(self, node_track: str, x: int, y: int, id_to_name: Dict[str, str],
-                              reg_loc_to_id: Dict[Tuple[int, int], List[str]], id_to_metadata):
+                              reg_loc_to_id: Dict[Tuple[int, int], List[str]], id_to_metadata,
+                              node_width: int = None):
         matching_reg_list = reg_loc_to_id[(x, y)]
         for reg in matching_reg_list:
             reg_full_name = id_to_name[reg]
             if node_track in reg_full_name:
                 if reg in id_to_metadata:
                     reg_metadata = id_to_metadata[reg]
+                    if self._reg_width_mismatch(reg_metadata, node_width):
+                        continue
                     extra_data_ = int(reg_metadata['extra_data'])
                     if extra_data_ == 1:
                         print(f"INFO: Added interconnect FIFO bogus data at {node_track} at {x}, {y}")
@@ -518,13 +534,16 @@ class Interconnect(generator.Generator):
         return False
 
     def get_bogus_num_config(self, node_track: str, x: int, y: int, id_to_name: Dict[str, str],
-                             reg_loc_to_id: Dict[Tuple[int, int], List[str]], id_to_metadata):
+                             reg_loc_to_id: Dict[Tuple[int, int], List[str]], id_to_metadata,
+                             node_width: int = None):
         matching_reg_list = reg_loc_to_id[(x, y)]
         for reg in matching_reg_list:
             reg_full_name = id_to_name[reg]
             if node_track in reg_full_name:
                 if reg in id_to_metadata:
                     reg_metadata = id_to_metadata[reg]
+                    if self._reg_width_mismatch(reg_metadata, node_width):
+                        continue
                     extra_data_ = int(reg_metadata['extra_data'])
                     if extra_data_ > 0:
                         print(f"INFO: Added interconnect FIFO bogus data at {node_track} at {x}, {y}")
@@ -645,7 +664,8 @@ class Interconnect(generator.Generator):
                                     bogus_init_num = 0
                                 else:
                                     bogus_init_num = self.get_bogus_num_config(pre_node.name, pre_node.x,
-                                                                               pre_node.y, id_to_name, reg_loc_to_id, id_to_metadata)
+                                                                               pre_node.y, id_to_name, reg_loc_to_id, id_to_metadata,
+                                                                               node_width=pre_node.width)
                                 config = self.__set_fifo_mode(pre_node, start=False, end=False,
                                                               use_non_split_fifos=True, bogus_init_num=bogus_init_num)
                                 result += config
@@ -680,10 +700,10 @@ class Interconnect(generator.Generator):
                                 else:
                                     first_node_bogus_init = self.get_bogus_init_config(first_node.name, first_node.x,
                                                                                        first_node.y, id_to_name, reg_loc_to_id,
-                                                                                       id_to_metadata)
+                                                                                       id_to_metadata, node_width=first_node.width)
                                     last_node_bogus_init = self.get_bogus_init_config(last_node.name, last_node.x,
                                                                                       last_node.y, id_to_name, reg_loc_to_id,
-                                                                                      id_to_metadata)
+                                                                                      id_to_metadata, node_width=last_node.width)
                                 print(f"First node: {first_node.name} - {first_node_bogus_init}")
                                 print(f"Last node: {last_node.name} - {last_node_bogus_init}")
 
