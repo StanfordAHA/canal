@@ -1,6 +1,9 @@
 name: CI Test
 
-on: [push]
+on:
+  push:
+  # When requested manually
+  workflow_dispatch:
 
 jobs:
   build:
@@ -33,22 +36,23 @@ jobs:
     - name: Install deps 🛠️
       shell: bash
       run: |
-        docker exec -i garnet_container bash -c '
-            set -e
-            git config --global --add safe.directory /aha/canal
-            cd /aha/canal
-            # If the ref is a branch (refs/heads/...), extract its name and check it out
-            if [[ "$GITHUB_REF" == refs/heads/* ]]; then
-              BRANCH="${GITHUB_REF##refs/heads/}"
-              git fetch origin "$BRANCH"
-              git checkout "$BRANCH"
-            else
-              # Otherwise, fallback to the commit SHA
-              git checkout "$GITHUB_SHA"
-            fi
-        '
+        # Test this checkout: put it in place of the image's canal (fetching inside the
+        # container failed: the image's canal remote asks for credentials)
+        docker exec -i garnet_container bash -c "rm -rf /aha/canal"
+        docker cp ../canal garnet_container:/aha/canal
         docker exec -i garnet_container bash -c "pip install -r /aha/canal/requirements.txt"
         docker exec -i garnet_container bash -c "pip install -e /aha/canal"
+
+    - name: Check style (setup.cfg) 🔎
+      shell: bash
+      run: |
+        docker exec -i garnet_container bash -c '
+            set -e
+            source /aha/bin/activate
+            pip install pycodestyle
+            cd /aha/canal
+            python -m pycodestyle canal tests *.py
+        '
 
     - name: Run pointwise test ⚙️
       shell: bash

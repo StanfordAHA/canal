@@ -249,12 +249,12 @@ class SwitchBox:
             self.__sbs: List[List[List[SwitchBoxNode]]] = []
             for side in SwitchBoxSide:
                 if side == SwitchBoxSide.NORTH:
-                    continue # Skip the NORTH side
+                    continue  # Skip the NORTH side
                 self.__sbs.append([])
 
             for side in SwitchBoxSide:
                 if side == SwitchBoxSide.NORTH:
-                    continue # Skip the NORTH side
+                    continue  # Skip the NORTH side
                 side_list = []
                 if ((side == SwitchBoxSide.WEST) or (side == SwitchBoxSide.EAST)):
                     num_tracks_to_loop_over = self.num_horizontal_track
@@ -270,7 +270,7 @@ class SwitchBox:
             # construct the internal connections
             for side in SwitchBoxSide:
                 if side == SwitchBoxSide.NORTH:
-                    continue # Skip the NORTH side
+                    continue  # Skip the NORTH side
                 for io in SwitchBoxIO:
                     for track in range(self.num_track):
                         node = SwitchBoxNode(self.x, self.y, track, width,
@@ -349,7 +349,7 @@ class SwitchBox:
         for side in SwitchBoxSide:
             if self.isTall:
                 if side == SwitchBoxSide.NORTH:
-                    continue # Skip the NORTH side
+                    continue  # Skip the NORTH side
             num_tracks_to_loop_over = self.num_track
 
             if self.isTall:
@@ -889,7 +889,7 @@ class InterconnectGraph:
                 NUM_SIGNALS_PER_MU_IO = 2
                 SOUTH = 1
                 IN = 0
-                MU_IO_NUM_TRACKS = 5 # MU I/O currently supports only 5 tracks
+                MU_IO_NUM_TRACKS = 5  # MU I/O currently supports only 5 tracks
 
                 for i in range(NUM_SIGNALS_PER_MU_IO):
                     f.write(f"  PORT mu2io_{tile.switchbox.width}_{i} ({tile.x}, {tile.y}, {tile.switchbox.width})\n")
@@ -1344,11 +1344,8 @@ class SwitchBoxHelper:
             dest_side = conn[3]
 
             for additional_track in range(num_tracks, num_horizontal_tracks):
-                is_redundant_horizontal_conn = (source_side == SwitchBoxSide.WEST and
-                                            dest_side == SwitchBoxSide.EAST) or \
-                                            (source_side == SwitchBoxSide.EAST and
-                                            dest_side == SwitchBoxSide.WEST)
-                if not(is_redundant_horizontal_conn):
+                is_redundant_horizontal_conn = (source_side == SwitchBoxSide.WEST and dest_side == SwitchBoxSide.EAST) or (source_side == SwitchBoxSide.EAST and dest_side == SwitchBoxSide.WEST)
+                if not (is_redundant_horizontal_conn):
                     if source_side != SwitchBoxSide.SOUTH and source_side != SwitchBoxSide.NORTH:
                         if additional_track % num_tracks == source_track:
                             additional_result_0.append((additional_track, source_side, dest_track, dest_side))
@@ -1518,7 +1515,6 @@ if __name__ == "__main__":
         for item in tuple_list:
             track = f"{item[2]}_{item[3]}"  # Use 3rd and 4th elements
             mux_input_counts[track] += 1  # Increment count
-
 
         # add up all the values in mux_input_counts
         total_mux_inputs = sum(mux_input_counts.values())

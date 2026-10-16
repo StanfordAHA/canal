@@ -277,7 +277,7 @@ def create_uniform_interconnect(width: int,
         for track, side in pipeline_regs_to_add:
             if tile.isTallTile:
                 if side == SwitchBoxSide.NORTH:
-                    continue # skip the north side
+                    continue  # skip the north side
             if tile.switchbox is None or tile.switchbox.num_track == 0:
                 continue
             # if track < num_tracks_to_loop_over:

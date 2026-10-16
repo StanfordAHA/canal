@@ -640,7 +640,7 @@ class Interconnect(generator.Generator):
                 for i in range(len(segment) - 1):
                     pre_node = segment[i]
                     next_node = segment[i + 1]
-                    if not(isinstance(pre_node, PortNode) and "mu2io" in pre_node.name):
+                    if not (isinstance(pre_node, PortNode) and "mu2io" in pre_node.name):
                         assert next_node in pre_node
                     # notice that there is a corner case where the SB directly connect to the
                     # next tile's CB
