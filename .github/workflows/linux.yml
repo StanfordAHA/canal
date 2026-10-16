@@ -40,8 +40,9 @@ jobs:
         # container failed: the image's canal remote asks for credentials)
         docker exec -i garnet_container bash -c "rm -rf /aha/canal"
         docker cp ../canal garnet_container:/aha/canal
-        docker exec -i garnet_container bash -c "pip install -r /aha/canal/requirements.txt"
-        docker exec -i garnet_container bash -c "pip install -e /aha/canal"
+        # In the aha venv (a bare pip is the image's conda python), without deps: the image
+        # already has them at aha's pins (requirements.txt would pull gemstone master)
+        docker exec -i garnet_container bash -c "source /aha/bin/activate && pip install --no-deps -e /aha/canal"
 
     - name: Check style (setup.cfg) 🔎
       shell: bash
