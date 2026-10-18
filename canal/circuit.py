@@ -1114,6 +1114,9 @@ class TileCircuit(GemstoneGenerator):
         for _, switchbox in self.sbs.items():
             if len(switchbox.regs) == 0:
                 return
+            # A static (not ready-valid) switch box has no flush port
+            if "flush" not in switchbox.ports:
+                continue
             self.wire(self.ports.flush[0], switchbox.ports.flush)
 
     def __should_add_config(self):
