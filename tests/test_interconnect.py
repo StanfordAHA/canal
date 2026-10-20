@@ -15,6 +15,7 @@ from util import copy_sv_files
 import pytest
 import filecmp
 import magma
+from gemstone.generator.generator import clear_generator_cache
 
 
 def assert_tile_coordinate(tile: Tile, x: int, y: int):
@@ -32,7 +33,7 @@ def assert_coordinate(node: Node, x: int, y: int):
 
 
 def create_dummy_cgra(chip_size, num_tracks, reg_mode, wiring, num_cfg=1,
-                      ready_valid=False):
+                      ready_valid=False, fifo_only_regs=False):
     addr_width = 8
     data_width = 32
     bit_widths = [1, 16]
@@ -78,7 +79,15 @@ def create_dummy_cgra(chip_size, num_tracks, reg_mode, wiring, num_cfg=1,
                                          pipeline_regs)
         ics[bit_width] = ic
     interconnect = Interconnect(ics, addr_width, data_width, tile_id_width,
-                                lift_ports=True, ready_valid=ready_valid)
+                                lift_ports=True, ready_valid=ready_valid,
+                                fifo_only_regs=fifo_only_regs)
+    if ready_valid:
+        # ready-valid switch-box registers take the tile's flush (garnet gives each
+        # tile one); without it finalize() fails with KeyError 'flush'
+        interconnect.add_port("flush", magma.In(magma.Bits[1]))
+        for tile_circuit in interconnect.tile_circuits.values():
+            tile_circuit.add_port("flush", magma.In(magma.Bits[1]))
+            interconnect.wire(interconnect.ports.flush, tile_circuit.ports.flush)
     # finalize the design
     interconnect.finalize()
     # wiring
@@ -496,6 +505,39 @@ def test_ready_valid_fifo():
                                magma_output="coreir-verilog",
                                directory=tempdir,
                                flags=["-Wno-fatal"])
+
+
+@pytest.mark.parametrize("fifo_only", [False, True])
+def test_fifo_only_regs(monkeypatch, fifo_only):
+    """fifo_only_regs: switch-box registers are always FIFOs. No `<reg>_fifo` config
+    bit and no fifo_en port (the pipeline-register mode, which drops tokens on a
+    ready-valid route, is gone); the route bitstream sets only bogus_init. Off by
+    default, so other fabrics keep the mode."""
+    monkeypatch.setenv("USE_NON_SPLIT_FIFOS", "1")
+    clear_generator_cache()   # tiles are cached by name, not by content
+    _, _, _, interconnect = create_dummy_cgra(2, 1, True, GlobalSignalWiring.Fanout,
+                                              ready_valid=True,
+                                              fifo_only_regs=fifo_only)
+    tile_circuit = interconnect.tile_circuits[(0, 0)]
+    sb = tile_circuit.sbs[16]
+    assert sb.regs
+    names = list(sb.registers.keys())
+    assert any(n.endswith("_bogus_init") for n in names)
+    assert any(n.endswith("_fifo") for n in names) != fifo_only
+    for _, reg in sb.regs.values():
+        assert ("fifo_en" in reg.ports) != fifo_only
+
+    reg_node = tile_circuit.tiles[16].switchbox.get_register(SwitchBoxSide.EAST, 0)
+    configs = tile_circuit.configure_fifo(reg_node, False, False, use_non_split_fifos=True)
+    assert len(configs) == (1 if fifo_only else 2)   # (fifo mode +) bogus_init
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        rtl_path = os.path.join(tempdir, "rtl")
+        magma.compile(rtl_path, interconnect.circuit(), output="coreir-verilog")
+        with open(rtl_path + ".v") as f:
+            rtl = f.read()
+    assert ("module reg_fifo_d_2_w_1_D_16_fifo_only" in rtl) == fifo_only
+    assert ("fifo_en" in rtl) != fifo_only
 
 
 if __name__ == "__main__":

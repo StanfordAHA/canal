@@ -22,9 +22,13 @@ class RegFIFO(Generator):
                  depth,
                  parallel=False,
                  break_out_rd_ptr=False,
-                 almost_full_diff=2):
+                 almost_full_diff=2,
+                 fifo_mode_config=True):
+        """fifo_mode_config=False: always a FIFO, with no fifo_en input (no
+        pipeline-register mode)"""
 
-        super().__init__(f"reg_fifo_d_{depth}_w_{width_mult}_D_{data_width}")
+        name = f"reg_fifo_d_{depth}_w_{width_mult}_D_{data_width}"
+        super().__init__(name if fifo_mode_config else name + "_fifo_only")
 
         self.data_width = self.parameter("data_width", 16)
         self.data_width.value = data_width
@@ -55,7 +59,8 @@ class RegFIFO(Generator):
                                      packed=True)
 
         # control whether to function as a pipeline register or not
-        self._fifo_en = self.input("fifo_en", 1)
+        if fifo_mode_config:
+            self._fifo_en = self.input("fifo_en", 1)
 
         self._flush = self.input("flush", 1)
         self._bogus_init_num = self.input("bogus_init_num", 2)
@@ -85,8 +90,12 @@ class RegFIFO(Generator):
         # and pop to match with pipeline register behavior
         self._push_en = self.var("push_en", 1)
         self._pop_en = self.var("pop_en", 1)
-        self.wire(self._push_en, kratos.ternary(self._fifo_en, self._push, const(1, 1)))
-        self.wire(self._pop_en, kratos.ternary(self._fifo_en, self._pop, const(1, 1)))
+        if fifo_mode_config:
+            self.wire(self._push_en, kratos.ternary(self._fifo_en, self._push, const(1, 1)))
+            self.wire(self._pop_en, kratos.ternary(self._fifo_en, self._pop, const(1, 1)))
+        else:
+            self.wire(self._push_en, self._push)
+            self.wire(self._pop_en, self._pop)
 
         self._valid = self.output("valid", 1)
 
@@ -357,20 +366,26 @@ class SplitFifo(Generator):
 class FifoRegWrapper(GemstoneGenerator):
     __cache = {}
 
-    def __init__(self, width, use_non_split_fifos=False):
+    def __init__(self, width, use_non_split_fifos=False, fifo_only=False):
+        """fifo_only: the register is always a 2-deep FIFO (no fifo_en port, no
+        pipeline-register mode); needs use_non_split_fifos. For fabrics that run only
+        ready-valid apps, where a plain register on a route would drop tokens."""
         super(FifoRegWrapper, self).__init__()
         self.width = width
         self.use_non_split_fifos = use_non_split_fifos
+        self.fifo_only = fifo_only
+        assert use_non_split_fifos or not fifo_only, "fifo_only needs non-split FIFOs"
 
-        if width not in FifoRegWrapper.__cache:
+        key = (width, use_non_split_fifos, fifo_only)
+        if key not in FifoRegWrapper.__cache:
             if self.use_non_split_fifos:
-                gen = RegFIFO(width, 1, depth=2)
+                gen = RegFIFO(width, 1, depth=2, fifo_mode_config=not fifo_only)
             else:
                 gen = SplitFifo(width)
             _kratos.passes.auto_insert_clock_enable(gen.internal_generator)
             circuit = kratos.util.to_magma(gen)
-            FifoRegWrapper.__cache[width] = circuit
-        self.__circuit = FromMagma(FifoRegWrapper.__cache[width])
+            FifoRegWrapper.__cache[key] = circuit
+        self.__circuit = FromMagma(FifoRegWrapper.__cache[key])
 
         # create wrapper ports so that it has the same interface as normal
         # magma registers modulo ready valid
@@ -385,8 +400,9 @@ class FifoRegWrapper(GemstoneGenerator):
             valid_out=magma.Out(magma.Bit),
             ready_in=magma.In(magma.Bit),
             ready_out=magma.Out(magma.Bit),
-            fifo_en=magma.In(magma.Bit)
         )
+        if not fifo_only:
+            self.add_ports(fifo_en=magma.In(magma.Bit))
 
         if not self.use_non_split_fifos:
             self.add_ports(
@@ -403,7 +419,8 @@ class FifoRegWrapper(GemstoneGenerator):
         self.wire(self.ports.O, self.__circuit.ports.data_out)
         self.wire(self.ports.clk, self.__circuit.ports.clk)
         self.wire(self.ports.CE, self.__circuit.ports.clk_en[0])
-        self.wire(self.ports.fifo_en, self.__circuit.ports.fifo_en[0])
+        if not fifo_only:
+            self.wire(self.ports.fifo_en, self.__circuit.ports.fifo_en[0])
 
         self.wire(self.ports.flush, self.__circuit.ports.flush[0])
 
@@ -441,7 +458,7 @@ class FifoRegWrapper(GemstoneGenerator):
             self.wire(self.ports.end_fifo, self.__circuit.ports.end_fifo[0])
 
     def name(self):
-        return f"FifoRegWrapper_{self.width}"
+        return f"FifoRegWrapper_{self.width}" + ("_fifo_only" if self.fifo_only else "")
 
 
 class ExclusiveNodeFanout(Generator):

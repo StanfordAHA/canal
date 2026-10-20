@@ -26,7 +26,11 @@ class Interconnect(generator.Generator):
                  lift_ports=False,
                  double_buffer: bool = False,
                  ready_valid: bool = False,
-                 give_north_io_sbs: bool = False):
+                 give_north_io_sbs: bool = False,
+                 fifo_only_regs: bool = False):
+        """fifo_only_regs: every switch-box register is a 2-deep FIFO with no
+        pipeline-register mode (no `<reg>_fifo` config bit), for fabrics that run only
+        ready-valid apps; needs ready_valid and USE_NON_SPLIT_FIFOS=1"""
         super().__init__()
 
         self.__interface = {}
@@ -43,6 +47,7 @@ class Interconnect(generator.Generator):
 
         self.double_buffer = double_buffer
         self.ready_valid = ready_valid
+        self.fifo_only_regs = fifo_only_regs
 
         self.give_north_io_sbs = give_north_io_sbs
 
@@ -88,7 +93,8 @@ class Interconnect(generator.Generator):
                             stall_signal_width=stall_signal_width,
                             double_buffer=self.double_buffer,
                             ready_valid=self.ready_valid,
-                            give_north_io_sbs=self.give_north_io_sbs)
+                            give_north_io_sbs=self.give_north_io_sbs,
+                            fifo_only_regs=self.fifo_only_regs)
 
         # we need to deal with inter-tile connections now
         # we only limit mesh

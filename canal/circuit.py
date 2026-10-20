@@ -175,9 +175,12 @@ class SB(InterconnectConfigurable):
                  stall_signal_width: int = 4,
                  double_buffer: bool = False,
                  ready_valid: bool = False,
-                 combinational_ports=None):
+                 combinational_ports=None,
+                 fifo_only_regs: bool = False):
         self.finalized = False
         self.ready_valid = ready_valid
+        # every register is a FIFO (no fifo_en mode bit): FifoRegWrapper fifo_only
+        self.fifo_only_regs = fifo_only_regs
         self.switchbox = switchbox
         self.__core_name = core_name
         self.stall_signal_width = stall_signal_width
@@ -194,6 +197,8 @@ class SB(InterconnectConfigurable):
 
         use_non_split_fifos = "USE_NON_SPLIT_FIFOS" in os.environ and os.environ.get("USE_NON_SPLIT_FIFOS") == "1"
         self.use_non_split_fifos = use_non_split_fifos
+        assert not fifo_only_regs or (ready_valid and use_non_split_fifos), \
+            "fifo_only_regs needs ready_valid and USE_NON_SPLIT_FIFOS=1"
 
         super().__init__(config_addr_width, config_data_width,
                          double_buffer=double_buffer)
@@ -342,7 +347,8 @@ class SB(InterconnectConfigurable):
     def __create_reg(self):
         for reg_name, reg_node in self.switchbox.registers.items():
             if self.ready_valid:
-                reg = FifoRegWrapper(reg_node.width, self.use_non_split_fifos)
+                reg = FifoRegWrapper(reg_node.width, self.use_non_split_fifos,
+                                     fifo_only=self.fifo_only_regs)
             else:
                 reg_cls = DefineRegister(reg_node.width, has_ce=True)
                 reg = FromMagma(reg_cls)
@@ -481,10 +487,11 @@ class SB(InterconnectConfigurable):
                 self.__handle_rmux_fanin(sb_node, n, node)
 
                 # set fifo enable mode
-                fifo_name = str(node) + "_fifo"
-                self.add_config(fifo_name, 1)
-                fifo_en = self.registers[fifo_name]
-                self.wire(fifo_en.ports.O[0], reg.ports.fifo_en)
+                if not self.fifo_only_regs:
+                    fifo_name = str(node) + "_fifo"
+                    self.add_config(fifo_name, 1)
+                    fifo_en = self.registers[fifo_name]
+                    self.wire(fifo_en.ports.O[0], reg.ports.fifo_en)
 
                 # set start and end if using splitFIFOs
                 if not self.use_non_split_fifos:
@@ -689,7 +696,8 @@ class TileCircuit(GemstoneGenerator):
                  stall_signal_width: int = 4,
                  double_buffer: bool = False,
                  ready_valid: bool = False,
-                 give_north_io_sbs: bool = False):
+                 give_north_io_sbs: bool = False,
+                 fifo_only_regs: bool = False):
         super().__init__()
 
         # turn off hashing because we controls that hashing here
@@ -702,6 +710,7 @@ class TileCircuit(GemstoneGenerator):
 
         self.double_buffer = double_buffer
         self.ready_valid = ready_valid
+        self.fifo_only_regs = fifo_only_regs
 
         # compute config addr sizes
         # (16, 24)
@@ -834,7 +843,8 @@ class TileCircuit(GemstoneGenerator):
                     core_name, stall_signal_width=stall_signal_width,
                     double_buffer=self.double_buffer,
                     ready_valid=self.ready_valid,
-                    combinational_ports=self.combinational_ports)
+                    combinational_ports=self.combinational_ports,
+                    fifo_only_regs=self.fifo_only_regs)
             self.sbs[sb.switchbox.width] = sb
 
         # lift all the sb ports up
@@ -1313,8 +1323,9 @@ class TileCircuit(GemstoneGenerator):
         configs = []
         # we only turn this on if it's a path from register to mux with ready-valid
         circuit = self.sbs[node.width]
-        reg_name = str(node) + "_fifo"
-        self.__add_additional_config(reg_name, 1, circuit, configs)
+        if not circuit.fifo_only_regs:   # a fifo_only register has no mode bit
+            reg_name = str(node) + "_fifo"
+            self.__add_additional_config(reg_name, 1, circuit, configs)
         bogus_init_name = str(node) + "_bogus_init"
         self.__add_additional_config(bogus_init_name, bogus_init_num, circuit, configs)
 
