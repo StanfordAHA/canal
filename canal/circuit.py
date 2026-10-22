@@ -20,7 +20,7 @@ from gemstone.generator.from_magma import FromMagma
 from mantle import DefineRegister
 from gemstone.generator.const import Const
 from .logic import ExclusiveNodeFanout, InclusiveNodeFanout, \
-    ReadyValidLoopBack, FifoRegWrapper
+    ReadyValidLoopBack, FifoRegWrapper, InputFifoSteer
 import os
 
 
@@ -102,10 +102,18 @@ class CB(InterconnectConfigurable):
     def __init__(self, node: PortNode,
                  config_addr_width: int, config_data_width: int,
                  double_buffer: bool = False,
-                 ready_valid: bool = False):
+                 ready_valid: bool = False,
+                 input_fifo: bool = False,
+                 stall_signal_width: int = 4):
+        """input_fifo: a 2-deep FIFO between the mux and the core for the switch-box
+        (network) sources; an inter-core source bypasses it (see __add_input_fifo).
+        Needs ready_valid and more than one source."""
         if not isinstance(node, PortNode):
             raise ValueError(node, PortNode.__name__)
         self.node: PortNode = node
+        self.input_fifo = input_fifo
+        if input_fifo and not (ready_valid and len(node.get_conn_in()) > 1):
+            raise ValueError(f"input_fifo on {node} needs ready_valid and more than one source")
 
         super().__init__(config_addr_width, config_data_width,
                          double_buffer=double_buffer)
@@ -114,7 +122,8 @@ class CB(InterconnectConfigurable):
 
         # lift the port to the top level
         self.add_ports(O=self.mux.ports.O.base_type())
-        self.wire(self.ports.O, self.mux.ports.O)
+        if not input_fifo:
+            self.wire(self.ports.O, self.mux.ports.O)
         self.add_ports(I=self.mux.ports.I.base_type())
         self.wire(self.ports.I, self.mux.ports.I)
 
@@ -129,6 +138,8 @@ class CB(InterconnectConfigurable):
             for port_type in ["ready", "valid"]:
                 for direction in ["in", "out"]:
                     port_name = f"{port_type}_{direction}"
+                    if input_fifo and direction == "out":
+                        continue   # driven by the FIFO steering
                     self.safe_wire(self.ports[port_name],
                                    self.mux.ports[port_name])
 
@@ -163,10 +174,77 @@ class CB(InterconnectConfigurable):
                 self.add_port("out_sel", magma.Out(magma.Bits[1]))
                 self.wire(Const(magma.Bits[1](0)), self.ports.out_sel)
 
-        self.instance_name = self.name()
+        if input_fifo:
+            self.__add_input_fifo(stall_signal_width)
+
+        # the instance keeps its name; a CB with a FIFO is a different module
+        self.instance_name = create_name(str(self.node))
+
+    def __add_input_fifo(self, stall_signal_width: int):
+        """Network sources -> mux -> FIFO -> core; an inter-core source -> core.
+
+        A core input whose ready depends combinationally on its valid (the RV pond's
+        write port: ready is the arbiter grant, and the request includes valid) forms a
+        zero-delay loop with the switch box's lazy-fork gating, which ANDs a track's
+        valid into the CB with every enabled sink's ready, this CB's included. Here the
+        ready a network source sees is the FIFO's registered ~full instead. The
+        inter-core source (e.g. a packed pond fed by its PE) keeps today's path: its
+        data, valid and ready bypass the FIFO, so packed latency is unchanged.
+
+        The bypass select is the CB's own select (== an inter-core source's index):
+        no new configuration bits, so routing and bitstreams are unchanged."""
+        width = self.node.width
+        loop_idx = [i for i, n in enumerate(self.node.get_conn_in())
+                    if isinstance(n, PortNode)]
+        fifo = FifoRegWrapper(width, use_non_split_fifos=True, fifo_only=True)
+        fifo.instance_name = "input_fifo"
+        steer = InputFifoSteer.get(width)
+        steer.instance_name = "input_fifo_steer"
+        self.add_ports(flush=magma.In(magma.Bit),
+                       stall=magma.In(magma.Bits[stall_signal_width]))
+
+        # inter-core source selected?
+        if not loop_idx:
+            self.wire(steer.ports.loop, Const(magma.Bits[1](0)))
+        elif len(loop_idx) == 1:
+            self.wire(steer.ports.loop[0], self.mux.ports.out_sel[loop_idx[0]])
+        else:
+            loop_or = FromMagma(mantle.DefineOr(len(loop_idx), 1))
+            for j, i in enumerate(loop_idx):
+                self.wire(loop_or.ports[f"I{j}"][0], self.mux.ports.out_sel[i])
+            self.wire(steer.ports.loop, loop_or.ports.O)
+        if len(loop_idx) == 1:
+            # straight from the source: no deeper than the mux it bypasses
+            self.wire(steer.ports.loop_data, self.ports.I[loop_idx[0]])
+            self.wire(steer.ports.loop_valid[0], self.ports.valid_in[loop_idx[0]])
+        else:
+            self.wire(steer.ports.loop_data, self.mux.ports.O)
+            self.wire(steer.ports.loop_valid[0], self.mux.ports.valid_out)
+
+        # network side: mux -> FIFO
+        self.wire(self.mux.ports.O, fifo.ports.I)
+        self.wire(self.mux.ports.valid_out, steer.ports.net_valid[0])
+        self.wire(steer.ports.fifo_push[0], fifo.ports.valid_in)
+        self.wire(steer.ports.fifo_pop[0], fifo.ports.ready_in)
+        self.wire(fifo.ports.O, steer.ports.fifo_data)
+        self.wire(fifo.ports.valid_out, steer.ports.fifo_valid[0])
+        self.wire(fifo.ports.ready_out, steer.ports.fifo_ready[0])
+        self.wire(fifo.ports.bogus_init, Const(magma.Bits[2](0)))
+        self.wire(self.ports.clk, fifo.ports.clk)
+        self.wire(self.ports.reset, fifo.ports.ASYNCRESET)
+        self.wire(self.ports.flush, fifo.ports.flush)
+        self.wire(self.ports.stall[0], steer.ports.stall[0])
+        self.wire(self.registers[str(self.node) + "_enable"].ports.O, steer.ports.enable)
+        self.wire(fifo.ports.CE, self.convert(steer.ports.fifo_clk_en[0], magma.enable))
+
+        # to the core and back to the switch box
+        self.wire(self.ports.ready_in, steer.ports.core_ready[0])
+        self.wire(steer.ports.data_out, self.ports.O)
+        self.wire(steer.ports.valid_out[0], self.ports.valid_out)
+        self.wire(steer.ports.ready_out[0], self.ports.ready_out)
 
     def name(self):
-        return create_name(str(self.node))
+        return create_name(str(self.node)) + ("_input_fifo" if self.input_fifo else "")
 
 
 class SB(InterconnectConfigurable):
@@ -697,7 +775,8 @@ class TileCircuit(GemstoneGenerator):
                  double_buffer: bool = False,
                  ready_valid: bool = False,
                  give_north_io_sbs: bool = False,
-                 fifo_only_regs: bool = False):
+                 fifo_only_regs: bool = False,
+                 input_fifo_ports=None):
         super().__init__()
 
         # turn off hashing because we controls that hashing here
@@ -711,6 +790,9 @@ class TileCircuit(GemstoneGenerator):
         self.double_buffer = double_buffer
         self.ready_valid = ready_valid
         self.fifo_only_regs = fifo_only_regs
+        # core input ports whose CB has a network-side FIFO (CB input_fifo)
+        self.input_fifo_ports = frozenset(input_fifo_ports or ())
+        assert not self.input_fifo_ports or ready_valid, "input_fifo_ports needs ready_valid"
 
         # compute config addr sizes
         # (16, 24)
@@ -818,9 +900,14 @@ class TileCircuit(GemstoneGenerator):
                         continue
                     # create a CB
                     port_refs = tile.get_port_ref(port_node.name)
+                    input_fifo = port_name in self.input_fifo_ports
+                    assert not (input_fifo and port_name in self.combinational_ports), \
+                        f"{port_name} is combinational: no input FIFO"
                     cb = CB(port_node, config_addr_width, config_data_width,
                             double_buffer=self.double_buffer,
-                            ready_valid=self.ready_valid)
+                            ready_valid=self.ready_valid,
+                            input_fifo=input_fifo,
+                            stall_signal_width=stall_signal_width)
                     if not isinstance(port_refs, list):
                         port_refs = [port_refs]
                     for p in port_refs:
@@ -1129,6 +1216,16 @@ class TileCircuit(GemstoneGenerator):
                 continue
             self.wire(self.ports.flush[0], switchbox.ports.flush)
 
+    def __wire_flush_to_cbs(self):
+        # CBs with an input FIFO (input_fifo_ports) take the tile's flush
+        for cb in self.cbs.values():
+            if "flush" not in cb.ports:
+                continue
+            if "flush" in self.ports:
+                self.wire(self.ports.flush[0], cb.ports.flush)
+            else:
+                self.wire(Const(magma.Bit(0)), cb.ports.flush)
+
     def __should_add_config(self):
         # a introspection on itself to determine whether to add config
         # or not
@@ -1171,6 +1268,7 @@ class TileCircuit(GemstoneGenerator):
 
         # MO: Flush signal HACK
         self.__wire_flush_to_sbs()
+        self.__wire_flush_to_cbs()
 
         # see if we really need to add config or not
         if not self.__should_add_config():

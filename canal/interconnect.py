@@ -27,10 +27,16 @@ class Interconnect(generator.Generator):
                  double_buffer: bool = False,
                  ready_valid: bool = False,
                  give_north_io_sbs: bool = False,
-                 fifo_only_regs: bool = False):
+                 fifo_only_regs: bool = False,
+                 input_fifo_ports=None):
         """fifo_only_regs: every switch-box register is a 2-deep FIFO with no
         pipeline-register mode (no `<reg>_fifo` config bit), for fabrics that run only
-        ready-valid apps; needs ready_valid and USE_NON_SPLIT_FIFOS=1"""
+        ready-valid apps; needs ready_valid and USE_NON_SPLIT_FIFOS=1
+        input_fifo_ports: core input port names whose connection box gets a 2-deep
+        FIFO between its switch-box sources and the core; an inter-core source
+        bypasses it (no new config bits). For a core input whose ready depends on
+        its valid (the RV pond), which loops with the switch box's valid gating;
+        needs ready_valid"""
         super().__init__()
 
         self.__interface = {}
@@ -48,6 +54,7 @@ class Interconnect(generator.Generator):
         self.double_buffer = double_buffer
         self.ready_valid = ready_valid
         self.fifo_only_regs = fifo_only_regs
+        self.input_fifo_ports = frozenset(input_fifo_ports or ())
 
         self.give_north_io_sbs = give_north_io_sbs
 
@@ -94,7 +101,8 @@ class Interconnect(generator.Generator):
                             double_buffer=self.double_buffer,
                             ready_valid=self.ready_valid,
                             give_north_io_sbs=self.give_north_io_sbs,
-                            fifo_only_regs=self.fifo_only_regs)
+                            fifo_only_regs=self.fifo_only_regs,
+                            input_fifo_ports=self.input_fifo_ports)
 
         # we need to deal with inter-tile connections now
         # we only limit mesh

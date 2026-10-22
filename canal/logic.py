@@ -461,6 +461,42 @@ class FifoRegWrapper(GemstoneGenerator):
         return f"FifoRegWrapper_{self.width}" + ("_fifo_only" if self.fifo_only else "")
 
 
+class InputFifoSteer(Generator):
+    """Steering around a connection box's network-side FIFO (Interconnect
+    input_fifo_ports). `loop` is 1 when the CB selects an inter-core source: the core
+    then sees that source's data, valid and ready directly (as without the FIFO).
+    Otherwise the core reads the FIFO, which the CB mux (switch-box tracks) fills, and
+    the CB's ready to the switch box is the FIFO's registered ~full. The FIFO is
+    clocked only when the CB is enabled and the tile is not stalled."""
+    __cache = {}
+
+    def __init__(self, width: int):
+        super(InputFifoSteer, self).__init__(f"InputFifoSteer_W{width}")
+        loop = self.input("loop", 1)
+        loop_data = self.input("loop_data", width)
+        loop_valid = self.input("loop_valid", 1)
+        net_valid = self.input("net_valid", 1)
+        core_ready = self.input("core_ready", 1)
+        fifo_data = self.input("fifo_data", width)
+        fifo_valid = self.input("fifo_valid", 1)
+        fifo_ready = self.input("fifo_ready", 1)
+        stall = self.input("stall", 1)
+        enable = self.input("enable", 1)
+
+        self.wire(self.output("data_out", width), kratos.ternary(loop, loop_data, fifo_data))
+        self.wire(self.output("valid_out", 1), kratos.ternary(loop, loop_valid, fifo_valid))
+        self.wire(self.output("ready_out", 1), kratos.ternary(loop, core_ready, fifo_ready))
+        self.wire(self.output("fifo_push", 1), net_valid & ~loop)
+        self.wire(self.output("fifo_pop", 1), core_ready & ~loop)
+        self.wire(self.output("fifo_clk_en", 1), enable & ~stall)
+
+    @staticmethod
+    def get(width: int):
+        if width not in InputFifoSteer.__cache:
+            InputFifoSteer.__cache[width] = kratos.util.to_magma(InputFifoSteer(width))
+        return FromMagma(InputFifoSteer.__cache[width])
+
+
 class ExclusiveNodeFanout(Generator):
     __cache = {}
 

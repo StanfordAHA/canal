@@ -14,6 +14,7 @@ from canal.global_signal import apply_global_fanout_wiring, \
 from util import copy_sv_files
 import pytest
 import filecmp
+import re
 import magma
 from gemstone.generator.generator import clear_generator_cache
 
@@ -33,7 +34,8 @@ def assert_coordinate(node: Node, x: int, y: int):
 
 
 def create_dummy_cgra(chip_size, num_tracks, reg_mode, wiring, num_cfg=1,
-                      ready_valid=False, fifo_only_regs=False):
+                      ready_valid=False, fifo_only_regs=False,
+                      input_fifo_ports=None, inter_core_connection=None):
     addr_width = 8
     data_width = 32
     bit_widths = [1, 16]
@@ -76,11 +78,13 @@ def create_dummy_cgra(chip_size, num_tracks, reg_mode, wiring, num_cfg=1,
                                               in_conn},
                                          {track_length: num_tracks},
                                          SwitchBoxType.Disjoint,
-                                         pipeline_regs)
+                                         pipeline_regs,
+                                         inter_core_connection=(inter_core_connection or {}).get(bit_width))
         ics[bit_width] = ic
     interconnect = Interconnect(ics, addr_width, data_width, tile_id_width,
                                 lift_ports=True, ready_valid=ready_valid,
-                                fifo_only_regs=fifo_only_regs)
+                                fifo_only_regs=fifo_only_regs,
+                                input_fifo_ports=input_fifo_ports)
     if ready_valid:
         # ready-valid switch-box registers take the tile's flush (garnet gives each
         # tile one); without it finalize() fails with KeyError 'flush'
@@ -538,6 +542,75 @@ def test_fifo_only_regs(monkeypatch, fifo_only):
             rtl = f.read()
     assert ("module reg_fifo_d_2_w_1_D_16_fifo_only" in rtl) == fifo_only
     assert ("fifo_en" in rtl) != fifo_only
+
+
+def test_input_fifo_ports(monkeypatch):
+    """input_fifo_ports: the named core input's CB gets a 2-deep FIFO between its
+    switch-box sources and the core; an inter-core source bypasses it, chosen by the
+    CB's own select (no new config bits, so route bitstreams are unchanged). Off by
+    default. The dummy core's output feeds its own input as the inter-core source."""
+    monkeypatch.setenv("USE_NON_SPLIT_FIFOS", "1")
+    port = "data_in_16b"
+    inter_core = {16: {"data_out_16b": [port]}}
+    built = {}
+    for on in (False, True):
+        # tiles are cached by name, not by content, here and in coreir's context
+        clear_generator_cache()
+        magma.frontend.coreir_.ResetCoreIR()
+        _, _, _, ic = create_dummy_cgra(2, 1, True, GlobalSignalWiring.Fanout,
+                                        ready_valid=True, fifo_only_regs=True,
+                                        input_fifo_ports=[port] if on else None,
+                                        inter_core_connection=inter_core)
+        tile_circuit = ic.tile_circuits[(0, 0)]
+        cb = tile_circuit.cbs[port]
+        assert cb.input_fifo == on
+        assert ("flush" in cb.ports and "stall" in cb.ports) == on
+        assert cb.name().endswith("_input_fifo") == on
+        assert cb.instance_name == "CB_" + port
+        # no other CB has one
+        assert not any(c.input_fifo for name, c in tile_circuit.cbs.items() if name != port)
+
+        tile = tile_circuit.tiles[16]
+        node = tile.ports[port]
+        conn_in = node.get_conn_in()
+        loop_src = tile.ports["data_out_16b"]
+        assert loop_src in conn_in   # the inter-core source
+        net_src = next(n for n in conn_in if isinstance(n, SwitchBoxNode))
+        routes = {"net": [[net_src, node]], "loop": [[loop_src, node]]}
+        bitstream = ic.get_route_bitstream(routes, use_fifo=True)
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            rtl_path = os.path.join(tempdir, "rtl")
+            magma.compile(rtl_path, ic.circuit(), output="coreir-verilog")
+            with open(rtl_path + ".v") as f:
+                rtl = f.read()
+        built[on] = (dict((n, r.width) for n, r in cb.registers.items()), bitstream, rtl)
+
+    regs_off, bs_off, rtl_off = built[False]
+    regs_on, bs_on, rtl_on = built[True]
+    assert regs_on == regs_off   # same config registers: select + enable only
+    assert bs_on == bs_off
+    assert len(bs_on) == 4       # select + enable for each route
+    assert "InputFifoSteer" not in rtl_off
+    assert "module CB_data_in_16b_input_fifo" in rtl_on
+    assert "module InputFifoSteer_W16" in rtl_on
+    # the inter-core source's select steers around the FIFO
+    loop_idx = conn_in.index(loop_src)
+    assert re.search(rf"\.loop\(\w*out_sel\[{loop_idx}\]\)", rtl_on)
+    assert f".loop_data(I[{loop_idx}])" in rtl_on
+
+
+@pytest.mark.parametrize("bad", ["comb", "static"])
+def test_input_fifo_ports_needs_ready_valid(monkeypatch, bad):
+    monkeypatch.setenv("USE_NON_SPLIT_FIFOS", "1")
+    clear_generator_cache()
+    with pytest.raises(AssertionError):
+        if bad == "comb":   # a combinational input has no ready-valid
+            create_dummy_cgra(2, 1, True, GlobalSignalWiring.Fanout, ready_valid=True,
+                              input_fifo_ports=["data_in_16b_comb"])
+        else:
+            create_dummy_cgra(2, 1, True, GlobalSignalWiring.Fanout,
+                              input_fifo_ports=["data_in_16b"])
 
 
 if __name__ == "__main__":
