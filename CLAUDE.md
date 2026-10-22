@@ -66,3 +66,43 @@ commit to").
 - **Generator cache:** gemstone caches circuits by name, and tiles skip content hashing.
   Two fabrics built in one process that differ only in content share a cached definition;
   tests that build several call `clear_generator_cache()`.
+
+## Network-side FIFO in a core input's CB: `input_fifo_ports` (2026-10-21, session cfc4174c; user chose this over a lake fix)
+
+- **Why:** the RV pond's write `ready` is its arbiter grant, and the request includes the
+  port's `valid`, so `ready` depends combinationally on `valid`. A switch-box track's `valid`
+  into a CB is ANDed with every enabled sink's `ready`, this CB's included
+  (`*_ready_reduction_for_gating`). So a pond fed over the routing network forms a zero-delay
+  loop: matmul_tile `ux=4` (unpacked kernel ponds) hung on the thesis RV fabric (4.39 ms
+  simulated, no finish). A packed pond, fed from its PE over the inter-core edge, is fine:
+  that source's `valid` is the PE's registered output, ungated.
+- **What:** `Interconnect(..., input_fifo_ports=[names])` → TileCircuit → `CB(input_fifo=True)`.
+  - The mux output for switch-box sources goes through a 2-deep FIFO (`FifoRegWrapper`
+    fifo_only) before the core. The `ready` a selected track sees is the FIFO's registered
+    `~full`.
+  - An inter-core source bypasses the FIFO: `InputFifoSteer` picks it when the CB's own select
+    is that source's index, passing its data, `valid` and the core's `ready` straight through.
+    Packed latency is unchanged.
+  - No new config bits, so routing and bitstreams are unchanged.
+  - The FIFO takes the tile flush and stall, has no pre-fill, and is clocked only while the
+    CB is enabled.
+  - The module is `CB_<port>_input_fifo`; the instance name is unchanged.
+  - Off by default. garnet `--thesis rv` enables it for `PondTop_input_width_{dw}_num_0`.
+- **Checked** (thesis RV 16x16, 4 KB MEM + 128 B / 6-dim pond):
+  - matmul_tile T44 `ux=4` bit-accurate, 2405 ns (three unpacked kernel banks, plus packed
+    ones);
+  - matmul_rvtry3 13355 ns with the same placement, routing and bitstream as without it;
+  - conv_3_3 4150 ns;
+  - zircon 8x2: all 241 canal-built modules byte-identical;
+  - a standalone CB sim against the stock CB: identical on the loopback path; on a track,
+    1 cycle of latency at full throughput, where the stock CB moved 0 tokens.
+- **Cost:** local Genus freepdk45 Tile_PE +287 µm² (+0.6%); the pond CB grows 540 → 917.
+  Network-fed pond writes take one more cycle.
+- **Alternative not taken:** a lake change taking the pond's `ready` from its schedule step
+  (`ready = sg_step & resource_ready`). It is area-neutral, but leaves a long combinational
+  path from the pond's counters through the switch-box ready network back into the pond
+  (-1375 ps locally). The prototype is in scratchpad cfc4174c `pondfix/B` (lake 908bbf07,
+  unpushed).
+- **Test pitfall:** building and compiling two fabrics that differ only in content in one
+  process needs both `clear_generator_cache()` and `magma.frontend.coreir_.ResetCoreIR()`
+  (coreir reuses same-named modules). `test_input_fifo_ports` calls both.
